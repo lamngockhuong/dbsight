@@ -1,16 +1,22 @@
-.PHONY: build dev docker-build docker-up docker-down migrate generate-key lint test fmt-md
+.PHONY: build dev dev-docs build-docs docker-build docker-up docker-down migrate generate-key lint test fmt-md
 
 BINARY=bin/dbsight
 IMAGE=dbsight:latest
 
 build:
-	cd web && pnpm run build
+	pnpm --filter web build
 	go build -o $(BINARY) .
 
 dev:
 	docker-compose up -d postgres
 	go run . serve &
-	cd web && pnpm run dev
+	pnpm --filter web dev
+
+dev-docs:
+	pnpm --filter docs dev
+
+build-docs:
+	pnpm --filter docs build
 
 docker-build:
 	docker build -t $(IMAGE) .
@@ -29,7 +35,7 @@ generate-key:
 
 lint:
 	go vet ./internal/...
-	cd web && pnpm run lint
+	pnpm --filter web lint
 
 test:
 	go test ./internal/...

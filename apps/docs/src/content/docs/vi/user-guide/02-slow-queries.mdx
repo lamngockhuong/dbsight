@@ -1,0 +1,64 @@
+---
+title: "Phân tích Truy vấn Chậm"
+description: "Xác định và phân tích các truy vấn PostgreSQL chậm với pg_stat_statements"
+---
+
+Bảng truy vấn chậm là view cốt lõi trong DBSight. Nó hiển thị các truy vấn tiêu tốn nhiều thời gian nhất trên cơ sở dữ liệu của bạn, được xếp hạng theo tổng chi phí thực thi.
+
+## Cách Hoạt động
+
+DBSight đọc từ extension `pg_stat_statements` trên cơ sở dữ liệu được theo dõi. Extension này tích lũy thống kê tích lũy — tổng số lần gọi, tổng thời gian, số hàng trả về — cho mọi query fingerprint đã được chuẩn hóa mà PostgreSQL đã thấy kể từ lần reset cuối cùng.
+
+Worker nền thu thập một Snapshot theo mỗi chu kỳ polling. Giữa các Snapshot, DBSight tính toán **Delta** để bạn có thể thấy những truy vấn nào đã trở nên tệ hơn kể từ lần thu thập trước — không chỉ những truy vấn nào tệ nhất nhìn chung.
+
+## Điều kiện tiên quyết: pg_stat_statements
+
+Cơ sở dữ liệu được theo dõi phải có `pg_stat_statements` được cài đặt và tải:
+
+```sql
+-- Kiểm tra xem nó đã active chưa
+SELECT * FROM pg_stat_statements LIMIT 1;
+
+-- Nếu chưa, cài đặt nó (yêu cầu superuser)
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+```
+
+Bạn cũng cần thêm nó vào `shared_preload_libraries` trong `postgresql.conf` và khởi động lại PostgreSQL nếu nó chưa được tải trước đó.
+
+## Các Cột trong Bảng Truy vấn
+
+| Cột | Mô tả |
+|---|---|
+| **Query** | Văn bản truy vấn đã chuẩn hóa (các giá trị literal được thay bằng `$1`, `$2`, …) |
+| **Calls** | Tổng số lần truy vấn này được thực thi |
+| **Total Time** | Tổng thời gian thực thi tích lũy tính bằng millisecond |
+| **Mean Time** | Thời gian thực thi trung bình mỗi lần gọi |
+| **Rows** | Tổng số hàng được trả về hoặc bị ảnh hưởng |
+| **Delta Calls** | Số lần gọi mới kể từ Snapshot trước |
+| **Delta Time** | Tổng thời gian tăng thêm kể từ Snapshot trước |
+
+## Sắp xếp
+
+Nhấp vào bất kỳ tiêu đề cột nào để sắp xếp theo metric đó. Sắp xếp theo **Total Time** (mặc định) xác định các truy vấn có chi phí tích lũy cao nhất. Sắp xếp theo **Mean Time** tìm các truy vấn chậm riêng lẻ có thể được gọi không thường xuyên. Sắp xếp theo **Delta Time** làm nổi bật những gì đang tích cực trở nên tệ hơn ngay lúc này.
+
+## Theo dõi Delta
+
+Mỗi lần Worker thu thập một Snapshot, nó lưu trữ các bộ đếm tích lũy. Các cột Delta hiển thị sự chênh lệch giữa hai Snapshot gần nhất cho mỗi query fingerprint. Một Delta lớn trong khoảng thời gian ngắn cho thấy một truy vấn đột nhiên chạy thường xuyên hơn hoặc mất nhiều thời gian hơn — đáng điều tra ngay lập tức.
+
+## Biểu đồ Sparkline
+
+Mỗi hàng truy vấn bao gồm một biểu đồ sparkline nhỏ trực quan hóa tổng thời gian qua một số Snapshot gần đây. Đường thẳng nghĩa là hiệu suất ổn định. Xu hướng đi lên nghĩa là truy vấn đang tích lũy chi phí theo thời gian.
+
+## Tự động làm mới qua SSE
+
+Bảng truy vấn đăng ký luồng Server-Sent Events tại `/api/connections/:id/queries/stream`. Dữ liệu mới được đẩy đến trình duyệt tự động mỗi khi Worker hoàn thành một lần thu thập — không cần làm mới thủ công. Xem [Bảng điều khiển Trực tiếp](/vi/user-guide/06-live-dashboard) để biết chi tiết về cơ chế SSE.
+
+## Mở Chi tiết Truy vấn
+
+Nhấp vào bất kỳ hàng nào trong bảng để mở **Ngăn kéo Chi tiết Truy vấn**. Từ đó bạn có thể:
+
+- Đọc văn bản truy vấn đã chuẩn hóa đầy đủ
+- Chạy [kế hoạch EXPLAIN](/vi/user-guide/03-explain-plans)
+- Xem lịch sử theo từng Snapshot
+
+**Tiếp theo:** [Kế hoạch EXPLAIN](/vi/user-guide/03-explain-plans) — đào sâu vào kế hoạch thực thi cho từng truy vấn.

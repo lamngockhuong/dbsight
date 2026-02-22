@@ -1,0 +1,315 @@
+---
+title: "API Reference"
+description: "Complete REST API documentation for all DBSight endpoints"
+---
+
+All endpoints are served from the same port as the UI (default `42198`). The API is JSON over HTTP — no authentication in the current MVP release.
+
+Base URL: `http://localhost:42198`
+
+---
+
+## Health
+
+### GET /healthz
+
+Returns server and database status. Used by Docker health checks and monitoring systems.
+
+**Response 200**
+
+```json
+{ "status": "ok", "db": "ok" }
+```
+
+**Response 503** — when the metadata DB is unreachable:
+
+```json
+{ "status": "ok", "db": "error" }
+```
+
+---
+
+## Connections
+
+### GET /api/connections
+
+List all registered connections.
+
+**Response 200**
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Production DB",
+    "db_type": "postgres",
+    "created_at": "2024-01-15T10:00:00Z",
+    "updated_at": "2024-01-15T10:00:00Z"
+  }
+]
+```
+
+Note: `encrypted_dsn` is never returned by any endpoint.
+
+---
+
+### POST /api/connections
+
+Create a new connection. The DSN is encrypted with AES-256-GCM before storage.
+
+**Request body**
+
+```json
+{
+  "name": "Production DB",
+  "db_type": "postgres",
+  "dsn": "postgres://user:password@db.example.com:5432/mydb?sslmode=require"
+}
+```
+
+**Response 201**
+
+```json
+{
+  "id": 1,
+  "name": "Production DB",
+  "db_type": "postgres",
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-15T10:00:00Z"
+}
+```
+
+---
+
+### GET /api/connections/\{id\}
+
+Fetch a single connection by ID.
+
+**Response 200** — same shape as the list item above.
+
+**Response 404** — connection not found.
+
+---
+
+### PUT /api/connections/\{id\}
+
+Update name, db_type, or DSN. All fields are optional — omitted fields are left unchanged.
+
+**Request body**
+
+```json
+{
+  "name": "Production DB (updated)",
+  "dsn": "postgres://user:newpassword@db.example.com:5432/mydb?sslmode=require"
+}
+```
+
+**Response 200** — updated connection object.
+
+---
+
+### DELETE /api/connections/\{id\}
+
+Delete a connection and all associated snapshots.
+
+**Response 204** — no body.
+
+---
+
+### POST /api/connections/\{id\}/test
+
+Test connectivity using the stored DSN. Does not modify any data.
+
+**Response 200**
+
+```json
+{ "ok": true }
+```
+
+**Response 200** (failure — connection refused, bad credentials, etc.)
+
+```json
+{ "ok": false, "error": "dial tcp: connection refused" }
+```
+
+---
+
+## Queries
+
+### GET /api/connections/\{id\}/queries
+
+Returns the latest snapshot with per-query deltas compared to the previous snapshot.
+
+**Response 200**
+
+```json
+{
+  "connection_id": 1,
+  "captured_at": "2024-01-15T10:30:00Z",
+  "queries": [
+    {
+      "query_id": "abc123",
+      "query": "SELECT * FROM orders WHERE user_id = $1",
+      "calls": 4200,
+      "total_exec_ms": 8400.5,
+      "mean_exec_ms": 2.0,
+      "rows": 12600,
+      "snapshot_at": "2024-01-15T10:30:00Z",
+      "calls_delta": 42,
+      "total_exec_delta_ms": 84.0,
+      "mean_exec_delta_ms": 0.1,
+      "period_secs": 30
+    }
+  ]
+}
+```
+
+---
+
+### GET /api/connections/\{id\}/queries/stream
+
+Server-Sent Events (SSE) stream. The server pushes a new event each time the worker completes a collection cycle for this connection.
+
+**Response** — `Content-Type: text/event-stream`
+
+Each event is a JSON object with the same shape as the `/queries` response, prefixed with `data: `.
+
+The frontend `use-sse.ts` hook consumes this endpoint with automatic reconnect.
+
+---
+
+### GET /api/connections/\{id\}/queries/history
+
+Returns all stored snapshots for the connection, ordered by capture time descending.
+
+**Query parameters**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `limit` | integer | 50 | Max snapshots to return |
+| `offset` | integer | 0 | Pagination offset |
+
+**Response 200**
+
+```json
+[
+  {
+    "id": 10,
+    "connection_id": 1,
+    "queries": [ /* SlowQuery array */ ],
+    "captured_at": "2024-01-15T10:30:00Z"
+  }
+]
+```
+
+---
+
+### POST /api/connections/\{id\}/explain
+
+Run `EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS)` on a query against the target database. Executed inside a `SET TRANSACTION READ ONLY` transaction for safety.
+
+**Request body**
+
+```json
+{
+  "query": "SELECT * FROM orders WHERE user_id = $1",
+  "analyze": true
+}
+```
+
+**Response 200**
+
+```json
+{
+  "query": "SELECT * FROM orders WHERE user_id = $1",
+  "plan": [ /* raw PostgreSQL EXPLAIN JSON */ ]
+}
+```
+
+---
+
+## Indexes
+
+### GET /api/connections/\{id\}/indexes
+
+Returns a full index analysis for the target database: unused indexes, tables with sequential scan pressure, duplicate indexes, and actionable recommendations.
+
+**Response 200**
+
+```json
+{
+  "unused_indexes": [
+    {
+      "schema_name": "public",
+      "table_name": "orders",
+      "index_name": "idx_orders_old",
+      "index_scans": 0,
+      "tup_read": 0,
+      "tup_fetch": 0,
+      "index_size_bytes": 8192,
+      "is_unused": true
+    }
+  ],
+  "missing_candidates": [
+    {
+      "schema_name": "public",
+      "table_name": "events",
+      "seq_scans": 18400,
+      "seq_tup_read": 92000000,
+      "n_live_tup": 5000000,
+      "table_size_bytes": 1073741824
+    }
+  ],
+  "duplicate_indexes": [
+    {
+      "table_name": "orders",
+      "index1": "idx_orders_user",
+      "index2": "idx_orders_user_id",
+      "index_def": "CREATE INDEX ... ON orders (user_id)"
+    }
+  ],
+  "recommendations": [
+    {
+      "type": "unused_index",
+      "schema_name": "public",
+      "table_name": "orders",
+      "index_name": "idx_orders_old",
+      "description": "Index has never been used — consider dropping it",
+      "sql": "DROP INDEX CONCURRENTLY idx_orders_old;",
+      "severity": "warning"
+    }
+  ],
+  "captured_at": "2024-01-15T10:30:00Z"
+}
+```
+
+---
+
+## Paste
+
+### POST /api/paste/queries
+
+Parse a slow query log text blob (PostgreSQL `log_min_duration_statement` output) and return structured query data. Request body limit is 10 MB.
+
+**Request body** — `Content-Type: text/plain` or `application/json`
+
+```json
+{
+  "text": "2024-01-15 10:00:01 UTC [1234]: LOG:  duration: 1523.456 ms  statement: SELECT ..."
+}
+```
+
+**Response 200**
+
+```json
+{
+  "queries": [
+    {
+      "query": "SELECT ...",
+      "duration_ms": 1523.456,
+      "logged_at": "2024-01-15T10:00:01Z"
+    }
+  ],
+  "count": 1
+}
+```

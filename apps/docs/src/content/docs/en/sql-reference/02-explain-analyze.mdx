@@ -1,0 +1,98 @@
+---
+title: EXPLAIN & ANALYZE
+description: How DBSight runs EXPLAIN plans safely with read-only transactions
+---
+
+`EXPLAIN` shows PostgreSQL's query execution plan — the sequence of operations the planner chose to satisfy a query. `EXPLAIN ANALYZE` actually executes the query and adds real timing and row counts alongside the estimates.
+
+DBSight exposes both modes through the Query Detail drawer and the dedicated EXPLAIN panel.
+
+## Safety Mechanism
+
+Running arbitrary `EXPLAIN ANALYZE` statements carries risk: a malicious or accidental write query could modify data. DBSight mitigates this by wrapping every EXPLAIN in a read-only transaction that is always rolled back.
+
+Source: `internal/adapter/explain.go`
+
+```sql
+BEGIN;
+SET TRANSACTION READ ONLY;
+EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) <query>;
+ROLLBACK;
+```
+
+The `SET TRANSACTION READ ONLY` call causes PostgreSQL to reject any data-modifying operation within the transaction. The explicit `ROLLBACK` (via `defer tx.Rollback`) ensures no changes persist even if `READ ONLY` were somehow bypassed.
+
+## Two Execution Modes
+
+### Estimate-only mode (no ANALYZE)
+
+Used when `AnalyzeMode = false`. Returns the planner's cost estimates without executing the query. Safe for any query type and has zero runtime cost.
+
+```sql
+EXPLAIN (FORMAT JSON) <query>
+```
+
+Use this mode when:
+- The query is expensive and you only need the plan structure
+- The query has write side-effects you want to avoid executing
+- You want instant results without waiting for execution
+
+### Full analyze mode
+
+Used when `AnalyzeMode = true`. Executes the query inside the read-only transaction and returns actual row counts, loop counts, and per-node timing.
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) <query>
+```
+
+The `BUFFERS` option adds shared/local block hit and read counts, which reveals whether nodes are reading from cache or disk.
+
+## JSON Output Structure
+
+DBSight requests `FORMAT JSON` for all plans. The top-level structure is an array with one element:
+
+```json
+[
+  {
+    "Plan": {
+      "Node Type": "Hash Join",
+      "Startup Cost": 0.00,
+      "Total Cost": 1234.56,
+      "Plan Rows": 500,
+      "Actual Rows": 487,
+      "Actual Loops": 1,
+      "Plans": [ ... ]
+    }
+  }
+]
+```
+
+Each node in `Plans` follows the same structure recursively.
+
+## Common Plan Node Types
+
+| Node Type        | Description                                                         |
+|------------------|---------------------------------------------------------------------|
+| `Seq Scan`       | Full table scan — reads every row. Normal for small tables or large result sets; costly on large tables without a `WHERE` clause. |
+| `Index Scan`     | Uses an index to locate rows, then fetches from the heap. Good for selective queries. |
+| `Index Only Scan`| Satisfies the query entirely from the index, no heap access. Most efficient read path. |
+| `Bitmap Heap Scan` | Uses a bitmap from one or more indexes, then fetches heap pages in order. Good for moderate selectivity. |
+| `Hash Join`      | Builds a hash table from the smaller relation then probes with the larger. Common for equi-joins on unsorted data. |
+| `Nested Loop`    | For each row in the outer set, scans the inner set. Efficient when inner side uses an index. |
+| `Merge Join`     | Joins two pre-sorted inputs. Efficient when both sides are already ordered. |
+| `Sort`           | Explicit sort step. Look for high `Sort Method: external merge` which indicates disk spill. |
+| `Aggregate`      | Computes aggregate functions (COUNT, SUM, etc.). |
+| `Limit`          | Truncates output to N rows. |
+
+## What to Look For
+
+- **High `Rows Removed by Filter`** on a `Seq Scan` — an index on the filter column would help.
+- **Estimated rows vs actual rows diverging by 10x or more** — stale statistics; run `ANALYZE <table>`.
+- **`Sort Method: external merge`** — sort spilled to disk; increase `work_mem`.
+- **`Shared Read Blocks` much higher than `Shared Hit Blocks`** — data not in cache; normal for cold queries, investigate if persistent.
+- **Nested Loop with many loops and no index on inner side** — consider adding an index or rewriting as a Hash Join.
+
+## Related
+
+- [EXPLAIN Plans](/en/user-guide/explain-plans) — using the EXPLAIN panel in the UI
+- [Slow Queries](/en/user-guide/slow-queries) — finding queries to analyze

@@ -1,0 +1,64 @@
+---
+title: "Slow Query Analysis"
+description: "Identify and analyze slow PostgreSQL queries with pg_stat_statements"
+---
+
+The slow query table is the core view in DBSight. It surfaces the queries consuming the most time on your database, ranked by total execution cost.
+
+## How It Works
+
+DBSight reads from the `pg_stat_statements` extension on the monitored database. This extension accumulates cumulative statistics — total calls, total time, rows returned — for every normalized query fingerprint PostgreSQL has seen since the last reset.
+
+The background worker collects a snapshot on each polling interval. Between snapshots, DBSight computes **deltas** so you can see which queries have gotten worse since the last collection pass, not just which queries are worst overall.
+
+## Prerequisite: pg_stat_statements
+
+The monitored database must have `pg_stat_statements` installed and loaded:
+
+```sql
+-- Check if it is already active
+SELECT * FROM pg_stat_statements LIMIT 1;
+
+-- If not, install it (requires superuser)
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+```
+
+You also need to add it to `shared_preload_libraries` in `postgresql.conf` and restart PostgreSQL if it has not been loaded before.
+
+## Query Table Columns
+
+| Column | Description |
+|---|---|
+| **Query** | Normalized query text (literals replaced with `$1`, `$2`, …) |
+| **Calls** | Total number of times this query has been executed |
+| **Total Time** | Cumulative execution time in milliseconds |
+| **Mean Time** | Average execution time per call |
+| **Rows** | Total rows returned or affected |
+| **Delta Calls** | New calls since the previous snapshot |
+| **Delta Time** | Additional total time since the previous snapshot |
+
+## Sorting
+
+Click any column header to sort by that metric. Sorting by **Total Time** (default) identifies the queries with the highest cumulative cost. Sorting by **Mean Time** finds individually slow queries that may be called infrequently. Sorting by **Delta Time** highlights what is actively getting worse right now.
+
+## Delta Tracking
+
+Each time the worker collects a snapshot, it stores the cumulative counters. The delta columns show the difference between the two most recent snapshots for each query fingerprint. A large delta in a short interval indicates a query that is suddenly running more often or taking longer — worth investigating immediately.
+
+## Sparkline Charts
+
+Each query row includes a small sparkline chart visualizing total time across the last several snapshots. A flat line means stable performance. An upward trend means the query is accumulating cost over time.
+
+## Auto-Refresh via SSE
+
+The query table subscribes to a Server-Sent Events stream at `/api/connections/:id/queries/stream`. New data pushes to the browser automatically each time the worker completes a collection pass — no manual refresh needed. See [Live Dashboard](/en/user-guide/06-live-dashboard) for details on the SSE mechanism.
+
+## Opening a Query Detail
+
+Click any row in the table to open the **Query Detail Drawer**. From there you can:
+
+- Read the full normalized query text
+- Run an [EXPLAIN plan](/en/user-guide/03-explain-plans)
+- View per-snapshot history
+
+**Next:** [EXPLAIN Plans](/en/user-guide/03-explain-plans) — dig into execution plans for individual queries.

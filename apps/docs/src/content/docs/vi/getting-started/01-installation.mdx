@@ -1,0 +1,76 @@
+---
+title: "Cài đặt"
+description: "Cài đặt DBSight qua Docker, tải binary hoặc build từ mã nguồn"
+---
+
+DBSight được đóng gói thành một file binary duy nhất, phục vụ cả API, background worker và React frontend cùng nhau. Chọn phương thức phù hợp với môi trường của bạn.
+
+## Yêu cầu
+
+Tùy thuộc vào phương thức cài đặt:
+
+- **Docker**: Docker và Docker Compose
+- **Binary / mã nguồn**: Go 1.22+, Node 20+, pnpm
+- **Cơ sở dữ liệu cần theo dõi**: PostgreSQL với extension `pg_stat_statements` được bật
+
+## Docker Compose (Khuyến nghị)
+
+Cách nhanh nhất để bắt đầu. File `docker-compose.yml` đi kèm sẽ khởi động cả DBSight và một phiên bản PostgreSQL với `pg_stat_statements` được cài sẵn.
+
+```bash
+git clone https://github.com/lamngockhuong/dbsight.git
+cd dbsight
+docker-compose up -d
+```
+
+DBSight sẽ chạy tại **http://localhost:42198**.
+
+Phiên bản PostgreSQL đi kèm đã sẵn sàng để theo dõi ngay. Để theo dõi một cơ sở dữ liệu bên ngoài, hãy thêm kết nối sau khi giao diện tải xong.
+
+## Tải Binary
+
+Tải bản phát hành đã được biên dịch sẵn từ trang [GitHub Releases](https://github.com/lamngockhuong/dbsight/releases).
+
+```bash
+# Ví dụ cho Linux amd64 — thay version và platform phù hợp
+curl -L https://github.com/lamngockhuong/dbsight/releases/latest/download/dbsight-linux-amd64 -o dbsight
+chmod +x dbsight
+
+# Thiết lập các biến môi trường bắt buộc
+export DATABASE_URL="postgresql://user:password@localhost:5432/dbsight_meta"
+export ENCRYPTION_KEY="$(openssl rand -hex 32)"
+
+# Chạy migration rồi khởi động server
+./dbsight migrate
+./dbsight serve
+```
+
+## Build từ Mã nguồn
+
+Yêu cầu Go 1.22+ và Node 20+ với pnpm.
+
+```bash
+git clone https://github.com/lamngockhuong/dbsight.git
+cd dbsight
+
+# Build frontend rồi đến Go binary
+make build
+
+# Binary được đặt tại bin/dbsight
+./bin/dbsight migrate
+./bin/dbsight serve
+```
+
+`make build` chạy `pnpm --filter web build` trước, sau đó biên dịch Go binary với React assets được nhúng vào.
+
+## Xác minh Cài đặt
+
+Mở trình duyệt tại **http://localhost:42198**. Bạn sẽ thấy bảng điều khiển DBSight với danh sách kết nối trống.
+
+Nếu trang không tải được, hãy kiểm tra:
+
+- Cổng `42198` không bị tiến trình khác chiếm dụng
+- `DATABASE_URL` có thể kết nối được và migration đã chạy
+- `ENCRYPTION_KEY` được đặt đúng 64 ký tự hex
+
+**Tiếp theo:** [Khởi động nhanh](/vi/getting-started/02-quick-start) — thêm kết nối đầu tiên và bắt đầu phân tích truy vấn.

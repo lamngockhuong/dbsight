@@ -1,0 +1,76 @@
+---
+title: "EXPLAIN Plans"
+description: "Run and analyze PostgreSQL EXPLAIN plans for query optimization"
+---
+
+EXPLAIN plans show exactly how PostgreSQL intends to (or actually did) execute a query. DBSight lets you run EXPLAIN directly from the slow query list without leaving the dashboard.
+
+## How to Run an EXPLAIN
+
+1. Click a query row in the slow query table to open the **Query Detail Drawer**.
+2. Click the **Explain** button in the drawer header (or use the sidebar link).
+3. Choose a mode:
+   - **EXPLAIN** — estimates only, no query execution
+   - **EXPLAIN ANALYZE** — executes the query and returns actual timing and row counts
+4. The JSON plan renders in the output panel.
+
+## EXPLAIN vs EXPLAIN ANALYZE
+
+| Mode | Executes Query | Shows Actual Times | Safe on Production |
+|---|---|---|---|
+| EXPLAIN | No | No | Yes |
+| EXPLAIN ANALYZE | Yes | Yes | Use with caution |
+
+Use **EXPLAIN** for a quick look at the planner's strategy without touching data. Use **EXPLAIN ANALYZE** when you need actual row counts and timing to diagnose plan estimation errors — but be aware it runs the query for real.
+
+## Safety
+
+DBSight wraps every EXPLAIN execution in a `SET TRANSACTION READ ONLY` transaction that is rolled back immediately after the plan is captured. This prevents accidental data modification even if a query somehow slips past normalization. Write operations (`INSERT`, `UPDATE`, `DELETE`) will error inside a read-only transaction, protecting your data.
+
+## Reading the JSON Output
+
+PostgreSQL returns the plan as a JSON tree. Key fields to look at:
+
+```json
+{
+  "Plan": {
+    "Node Type": "Hash Join",
+    "Startup Cost": 0.00,
+    "Total Cost": 1234.56,
+    "Plan Rows": 500,
+    "Actual Rows": 12043,
+    "Actual Total Time": 87.4,
+    "Plans": [...]
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `Node Type` | The operation PostgreSQL is performing |
+| `Total Cost` | Planner's estimated cost (arbitrary units, relative comparisons matter) |
+| `Plan Rows` vs `Actual Rows` | Large discrepancies indicate stale statistics — run `ANALYZE` |
+| `Actual Total Time` | Wall-clock milliseconds for this node (EXPLAIN ANALYZE only) |
+| `Buffers` | Pages read from cache vs disk (add `BUFFERS` option to see) |
+
+## Common Node Types
+
+| Node Type | What It Means |
+|---|---|
+| **Seq Scan** | Full table scan — acceptable on small tables, expensive on large ones |
+| **Index Scan** | Uses an index to locate rows — usually fast |
+| **Index Only Scan** | All required data comes from the index — very fast |
+| **Hash Join** | Builds a hash table from one side, probes with the other |
+| **Nested Loop** | Iterates outer rows, looks up matching inner rows — good for small sets |
+| **Sort** | Explicit sort step — may spill to disk if `work_mem` is too low |
+| **Bitmap Heap Scan** | Follows a bitmap of matching pages — common with OR conditions |
+
+## Optimization Tips
+
+- **Seq Scan on a large table**: likely a missing index. Check [Index Analysis](/en/user-guide/04-index-analysis).
+- **High cost node deep in the tree**: the bottleneck — focus optimization there first.
+- **Plan Rows far below Actual Rows**: run `ANALYZE tablename` to refresh statistics.
+- **Sort spilling to disk**: increase `work_mem` for the session or query.
+- **Many Nested Loop iterations**: consider rewriting with a join or adding an index on the inner relation.
+
+**Next:** [Index Analysis](/en/user-guide/04-index-analysis) — find unused and duplicate indexes.

@@ -1,0 +1,212 @@
+---
+title: "Triển khai Production"
+description: "Triển khai DBSight lên production với systemd, reverse proxy và TLS"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Không có xác thực trong MVP">
+DBSight không có đăng nhập tích hợp. **Hạn chế truy cập qua firewall hoặc VPN trước khi mở ra bất kỳ mạng nào.** Không bao giờ bind cổng 42198 vào giao diện công khai mà không có reverse proxy được bảo vệ phía trước.
+</Aside>
+
+Hướng dẫn này bao gồm triển khai binary trên Linux server với systemd, nginx và TLS qua Certbot.
+
+## Yêu cầu Trước
+
+- Linux server (Ubuntu 22.04+ hoặc tương tự)
+- PostgreSQL 14+ có thể truy cập từ server (có thể là managed, ví dụ RDS, hoặc self-hosted)
+- `pg_stat_statements` được kích hoạt trên các cơ sở dữ liệu đích bạn muốn giám sát
+- Tên miền trỏ đến server (cho TLS)
+- nginx đã cài đặt: `apt install nginx`
+- Certbot đã cài đặt: `apt install certbot python3-certbot-nginx`
+
+## 1. Tạo Cơ sở dữ liệu Metadata
+
+DBSight cần cơ sở dữ liệu PostgreSQL riêng để lưu các kết nối và Snapshot. Cơ sở dữ liệu này tách biệt với các cơ sở dữ liệu bạn giám sát.
+
+```sql
+CREATE USER dbsight WITH PASSWORD 'strong-random-password';
+CREATE DATABASE dbsight_meta OWNER dbsight;
+```
+
+## 2. Cài đặt Binary
+
+```bash
+# Tải về bản phát hành mới nhất (thay thế version và arch nếu cần)
+curl -L https://github.com/lamngockhuong/dbsight/releases/latest/download/dbsight-linux-amd64 \
+  -o /usr/local/bin/dbsight
+chmod +x /usr/local/bin/dbsight
+
+# Xác minh
+dbsight --version
+```
+
+## 3. Cấu hình Biến Môi trường
+
+Lưu trữ các secret trong file chỉ người dùng service mới đọc được:
+
+```bash
+useradd --system --no-create-home --shell /usr/sbin/nologin dbsight
+install -d -o dbsight -g dbsight -m 750 /etc/dbsight
+```
+
+Tạo `/etc/dbsight/env`:
+
+```bash
+DATABASE_URL=postgres://dbsight:strong-random-password@localhost:5432/dbsight_meta?sslmode=require
+ENCRYPTION_KEY=replace-with-output-of-openssl-rand-hex-32-padded-to-64-chars00
+PORT=42198
+WORKER_INTERVAL_SECS=30
+```
+
+```bash
+chown dbsight:dbsight /etc/dbsight/env
+chmod 600 /etc/dbsight/env
+```
+
+Tạo encryption key:
+
+```bash
+openssl rand -hex 32
+```
+
+**Lưu trữ khóa một cách an toàn** — mất khóa đồng nghĩa với mất quyền truy cập vào tất cả các DSN đã lưu.
+
+## 4. Chạy Migration
+
+```bash
+sudo -u dbsight env $(cat /etc/dbsight/env | xargs) dbsight migrate
+```
+
+## 5. Dịch vụ systemd
+
+Tạo `/etc/systemd/system/dbsight.service`:
+
+```ini
+[Unit]
+Description=DBSight database performance analyzer
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dbsight
+Group=dbsight
+EnvironmentFile=/etc/dbsight/env
+ExecStart=/usr/local/bin/dbsight serve
+Restart=on-failure
+RestartSec=5s
+
+# Tăng cường bảo mật
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dbsight
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable --now dbsight
+systemctl status dbsight
+```
+
+## 6. Reverse Proxy với nginx
+
+DBSight lắng nghe tại `127.0.0.1:42198`. Mở ra thông qua nginx để TLS kết thúc tại proxy.
+
+Tạo `/etc/nginx/sites-available/dbsight`:
+
+```nginx
+server {
+    listen 80;
+    server_name dbsight.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name dbsight.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/dbsight.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dbsight.example.com/privkey.pem;
+
+    # SSE yêu cầu tắt buffering
+    proxy_buffering off;
+    proxy_cache off;
+
+    location / {
+        proxy_pass         http://127.0.0.1:42198;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   Connection '';
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+```bash
+ln -s /etc/nginx/sites-available/dbsight /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+```
+
+## 7. TLS với Certbot
+
+```bash
+certbot --nginx -d dbsight.example.com
+```
+
+Certbot chỉnh sửa cấu hình nginx và thiết lập tự động gia hạn qua systemd timer.
+
+Ngoài ra, sử dụng **Caddy** để có HTTPS tự động với cấu hình tối giản:
+
+```
+dbsight.example.com {
+    reverse_proxy localhost:42198
+}
+```
+
+## 8. Firewall
+
+Chỉ cho phép HTTPS vào. Không bao giờ mở cổng 42198 trực tiếp:
+
+```bash
+ufw allow 22/tcp   # SSH
+ufw allow 80/tcp   # HTTP (chuyển hướng sang HTTPS)
+ufw allow 443/tcp  # HTTPS
+ufw deny 42198/tcp # Chặn truy cập trực tiếp
+ufw enable
+```
+
+Để sử dụng theo nhóm, hãy hạn chế theo IP nguồn hoặc đặt DBSight phía sau VPN (WireGuard, Tailscale, v.v.).
+
+## 9. Giám sát
+
+Thăm dò health endpoint từ hệ thống giám sát của bạn (Prometheus blackbox, UptimeRobot, v.v.):
+
+```bash
+curl -sf http://localhost:42198/healthz
+# {"status":"ok","db":"ok"}
+```
+
+Giá trị `db` là `"error"` nghĩa là DBSight không thể kết nối đến cơ sở dữ liệu metadata — kiểm tra `DATABASE_URL` và kết nối PostgreSQL.
+
+## Nâng cấp
+
+```bash
+# Tải về binary mới
+curl -L https://github.com/lamngockhuong/dbsight/releases/latest/download/dbsight-linux-amd64 \
+  -o /usr/local/bin/dbsight.new
+chmod +x /usr/local/bin/dbsight.new
+
+# Chạy migration trước (idempotent — an toàn để chạy lại)
+sudo -u dbsight env $(cat /etc/dbsight/env | xargs) /usr/local/bin/dbsight.new migrate
+
+# Hoán đổi binary và khởi động lại
+mv /usr/local/bin/dbsight.new /usr/local/bin/dbsight
+systemctl restart dbsight
+```

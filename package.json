@@ -1,0 +1,21 @@
+{
+  "name": "dbsight-monorepo",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:docs": "pnpm --filter docs dev",
+    "build:web": "pnpm --filter web build",
+    "build:docs": "pnpm --filter docs build",
+    "build": "pnpm --filter web build",
+    "lint": "pnpm --filter web lint",
+    "lint:fix": "pnpm --filter web lint:fix",
+    "format": "pnpm --filter web format"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp"]
+  }
+}

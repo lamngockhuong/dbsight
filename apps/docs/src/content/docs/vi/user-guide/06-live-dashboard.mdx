@@ -1,0 +1,76 @@
+---
+title: "Bảng điều khiển Trực tiếp"
+description: "Metrics cơ sở dữ liệu theo thời gian thực với SSE streaming"
+---
+
+DBSight truyền metrics trực tiếp đến trình duyệt bằng Server-Sent Events (SSE). Khi Worker nền hoàn thành mỗi lần thu thập, dữ liệu mới xuất hiện trên bảng điều khiển tự động — không cần polling từ trình duyệt, không cần làm mới thủ công.
+
+## Cách SSE Streaming Hoạt động
+
+Khi bạn mở view truy vấn của một kết nối, trình duyệt mở một kết nối HTTP liên tục đến:
+
+```
+GET /api/connections/{id}/queries/stream
+```
+
+Server giữ kết nối này mở và đẩy các sự kiện JSON được phân tách bằng dòng mới mỗi khi Worker gửi một Snapshot mới. API `EventSource` của trình duyệt nhận từng sự kiện và cập nhật bảng truy vấn tại chỗ.
+
+Cách này hiệu quả hơn short-polling: một kết nối liên tục mỗi tab đang mở, không có yêu cầu lãng phí trong các khoảng thời gian yên tĩnh.
+
+## Tự động Kết nối lại
+
+Nếu kết nối bị mất (gián đoạn mạng, khởi động lại server), SSE hook tự động thử kết nối lại với độ trễ backoff ngắn. Chỉ báo trạng thái trình duyệt hiển thị trạng thái kết nối. Không có dữ liệu nào bị mất — khi kết nối lại, Snapshot mới nhất được tải ngay lập tức.
+
+## Metrics Theo Thời gian Thực
+
+Mỗi sự kiện SSE cung cấp:
+
+- Các hàng truy vấn được cập nhật với thống kê tích lũy mới nhất
+- **Các cột Delta** hiển thị thay đổi kể từ Snapshot trước (số lần gọi, tổng thời gian)
+- Các điểm dữ liệu sparkline được thêm vào chuỗi hiện có
+
+Các truy vấn mới xuất hiện kể từ Snapshot cuối được thêm vào bảng. Các truy vấn có thống kê không thay đổi vẫn ở nguyên vị trí.
+
+## Thống kê Cơ sở Dữ liệu
+
+Phần header bảng điều khiển hiển thị các thống kê cấp cơ sở dữ liệu được thu thập cùng với dữ liệu truy vấn:
+
+| Metric | Mô tả |
+|---|---|
+| **Database Size** | Tổng dung lượng đĩa được sử dụng bởi cơ sở dữ liệu được theo dõi |
+| **Active Connections** | Số lượng kết nối client hiện tại |
+| **Max Connections** | Cài đặt `max_connections` từ `pg_settings` |
+| **Cache Hit Ratio** | Tỷ lệ phần trăm các lần đọc block được phục vụ từ `shared_buffers` |
+
+Các thông số này cập nhật theo mỗi lần Worker chạy cùng với dữ liệu truy vấn.
+
+## Tỷ lệ Cache Hit
+
+Tỷ lệ cache hit là một trong những metric có thể hành động nhất trên bảng điều khiển:
+
+| Tỷ lệ | Diễn giải |
+|---|---|
+| **> 99%** | Tốt — hầu hết các lần đọc được phục vụ từ bộ nhớ |
+| **95–99%** | Chấp nhận được — theo dõi xu hướng giảm |
+| **< 95%** | `shared_buffers` có thể chưa đủ |
+| **< 90%** | Cần điều tra — đọc đĩa thường xuyên, có thể cần thêm RAM |
+
+Tỷ lệ cache hit liên tục thấp thường có nghĩa là `shared_buffers` trong `postgresql.conf` quá nhỏ so với working set của bạn. Là điểm khởi đầu, PostgreSQL khuyến nghị đặt `shared_buffers` bằng 25% RAM khả dụng.
+
+## Chu kỳ Polling của Worker
+
+Worker nền chạy theo chu kỳ có thể cấu hình (mặc định 30 giây, đặt qua `WORKER_INTERVAL_SECS`). Chu kỳ này xác định độ chi tiết tối thiểu của theo dõi Delta và tốc độ các truy vấn chậm mới xuất hiện trong view trực tiếp.
+
+Worker áp dụng giới hạn đồng thời là 10 công việc thu thập cùng lúc — nếu bạn có hơn 10 kết nối, một số sẽ xếp hàng sau các kết nối khác trong mỗi lần tick.
+
+## Dữ liệu Lịch sử
+
+SSE cung cấp dữ liệu trực tiếp cho phiên hiện tại. Để xem lại các Snapshot lịch sử qua nhiều lần thu thập, dùng endpoint lịch sử được truy cập từ nút **History** của bảng truy vấn:
+
+```
+GET /api/connections/{id}/queries/history
+```
+
+Endpoint này trả về tất cả các Snapshot đã lưu trữ cho kết nối, giúp bạn xác định xu hướng theo thời gian.
+
+**Xem thêm:** [Phân tích Truy vấn Chậm](/vi/user-guide/02-slow-queries) — hiểu về metrics truy vấn và Delta.

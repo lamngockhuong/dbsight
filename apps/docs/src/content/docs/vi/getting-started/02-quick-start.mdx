@@ -1,0 +1,84 @@
+---
+title: "Khởi động nhanh"
+description: "Cài đặt DBSight và phân tích cơ sở dữ liệu PostgreSQL đầu tiên của bạn trong vài phút"
+---
+
+Hướng dẫn này đưa bạn từ bước cài đặt mới đến việc xem các truy vấn chậm cho kết nối cơ sở dữ liệu đầu tiên.
+
+## 1. Tạo Khóa Mã hóa
+
+DBSight mã hóa các DSN được lưu trữ bằng AES-256-GCM. Tạo khóa 32 byte được mã hóa dưới dạng 64 ký tự hex:
+
+```bash
+openssl rand -hex 32
+# Ví dụ đầu ra: a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2
+```
+
+Lưu giữ giá trị này — nếu bạn mất nó, các DSN đã lưu sẽ không thể giải mã được.
+
+## 2. Thiết lập Biến Môi trường
+
+```bash
+export DATABASE_URL="postgresql://user:password@localhost:5432/dbsight_meta"
+export ENCRYPTION_KEY="a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2"
+
+# Tùy chọn ghi đè
+export PORT=42198
+export WORKER_INTERVAL_SECS=30
+```
+
+`DATABASE_URL` trỏ đến cơ sở dữ liệu nơi DBSight lưu trữ metadata của chính nó (danh sách kết nối, snapshot). Đây là cơ sở dữ liệu riêng biệt với các cơ sở dữ liệu bạn muốn theo dõi.
+
+Bạn cũng có thể đặt các biến này trong file `.env` ở thư mục gốc của dự án — DBSight sẽ tự động tải nó khi khởi động.
+
+## 3. Chạy Migration
+
+Khởi tạo schema metadata trước khi khởi động server lần đầu tiên:
+
+```bash
+./dbsight migrate
+```
+
+Lệnh này là idempotent — an toàn để chạy mỗi lần deploy.
+
+## 4. Khởi động Server
+
+```bash
+./dbsight serve
+```
+
+Bạn sẽ thấy đầu ra tương tự như:
+
+```
+DBSight listening on :42198
+Worker started, interval=30s
+```
+
+## 5. Mở Bảng Điều Khiển
+
+Điều hướng đến **http://localhost:42198** trong trình duyệt của bạn. Danh sách kết nối sẽ trống.
+
+## 6. Thêm Kết Nối Đầu Tiên
+
+1. Nhấp **Add Connection** ở thanh bên trái.
+2. Nhập **Tên** mô tả (ví dụ: `production-replica`).
+3. Dán **DSN** PostgreSQL của bạn:
+   ```
+   postgresql://user:password@localhost:5432/mydb?sslmode=disable
+   ```
+4. Nhấp **Test Connection** để xác minh DBSight có thể kết nối đến cơ sở dữ liệu.
+5. Nhấp **Save**.
+
+Kết nối xuất hiện trong thanh bên. Worker nền của DBSight sẽ lập lịch ngay một lần thu thập metrics.
+
+## 7. Xem Truy Vấn Chậm
+
+Nhấp vào tên kết nối trong thanh bên. Bảng **Truy vấn chậm** sẽ hiển thị dữ liệu trong vòng một chu kỳ worker (mặc định 30 giây). Các truy vấn được xếp hạng theo tổng thời gian thực thi giảm dần.
+
+Từ đây bạn có thể:
+
+- Nhấp vào bất kỳ hàng truy vấn nào để mở ngăn kéo chi tiết
+- Chạy **kế hoạch EXPLAIN** trực tiếp từ ngăn kéo chi tiết
+- Kiểm tra tab **Phân tích Chỉ mục** để tìm các chỉ mục không dùng hoặc trùng lặp
+
+**Tiếp theo:** [Cấu hình](/vi/getting-started/03-configuration) — tùy chỉnh cổng, chu kỳ polling và nhiều hơn nữa.

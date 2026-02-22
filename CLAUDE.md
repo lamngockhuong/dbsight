@@ -6,14 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DBSight is a database performance analyzer — Go API server with embedded background worker + React SPA. Single binary serves API, worker (goroutine), and static files. Targets PostgreSQL via `pg_stat_statements`.
 
+## Monorepo Structure
+
+pnpm workspaces monorepo: `apps/web/` (React SPA) + `apps/docs/` (Starlight docs site). Go module stays at root.
+
 ## Commands
 
 ### Build
 
 ```bash
 make build                    # Build frontend then Go binary → bin/dbsight
-go build -o bin/dbsight .     # Go only (requires web/dist/ from prior pnpm build)
-cd web && pnpm run build       # Frontend only (tsc + vite)
+go build -o bin/dbsight .     # Go only (requires apps/web/dist/ from prior pnpm build)
+pnpm --filter web build       # Frontend only (tsc + vite)
+pnpm --filter docs build      # Docs site only (Astro/Starlight)
 ```
 
 ### Development
@@ -22,7 +27,8 @@ cd web && pnpm run build       # Frontend only (tsc + vite)
 docker-compose up -d postgres  # Start local PostgreSQL
 go run . migrate               # Run DB migrations
 go run . serve                 # Start API server (port 42198) with embedded worker
-cd web && pnpm run dev          # Vite dev server with /api proxy to :42198
+pnpm --filter web dev          # Vite dev server with /api proxy to :42198
+pnpm --filter docs dev         # Starlight docs dev server
 ```
 
 ### Test & Lint
@@ -30,9 +36,9 @@ cd web && pnpm run dev          # Vite dev server with /api proxy to :42198
 ```bash
 go test ./internal/...         # Go tests
 go vet ./internal/...          # Go static analysis
-cd web && pnpm run lint         # Biome (lint + format check)
-cd web && pnpm run lint:fix     # Biome auto-fix
-cd web && pnpm run format       # Biome format only
+pnpm --filter web lint         # Biome (lint + format check)
+pnpm --filter web lint:fix     # Biome auto-fix
+pnpm --filter web format       # Biome format only
 ```
 
 ### Single test file
@@ -48,7 +54,7 @@ go test ./internal/crypto/ -v -run TestEncryptDecrypt
 - `dbsight serve` — starts HTTP server + worker goroutine
 - `dbsight migrate` — runs embedded SQL migrations
 
-**`//go:embed web/dist`** in `main.go` embeds the React build into the binary. Must run `pnpm run build` in `web/` before `go build`.
+**`//go:embed apps/web/dist`** in `main.go` embeds the React build into the binary. Must run `pnpm --filter web build` before `go build`.
 
 ### Backend (Go)
 
@@ -83,7 +89,7 @@ migrations/                      — SQL files embedded via migrations/embed.go
 ### Frontend (React + TypeScript)
 
 ```bash
-web/src/
+apps/web/src/
   types/index.ts              — TS interfaces mirroring Go models
   api/client.ts               — Typed fetch wrapper for all API endpoints
   hooks/                      — use-connections, use-queries, use-sse
@@ -112,7 +118,7 @@ GET            /api/connections/{id}/queries          — Latest snapshot with d
 GET            /api/connections/{id}/queries/stream    — SSE live updates
 GET            /api/connections/{id}/queries/history   — Historical snapshots
 POST           /api/paste/queries                      — Parse slow log text
-/*             — SPA fallback (serves web/dist/index.html)
+/*             — SPA fallback (serves apps/web/dist/index.html)
 ```
 
 ## Environment Variables

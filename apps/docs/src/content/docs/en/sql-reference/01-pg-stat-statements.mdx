@@ -1,0 +1,83 @@
+---
+title: pg_stat_statements
+description: How DBSight collects slow query data from pg_stat_statements
+---
+
+`pg_stat_statements` is a PostgreSQL extension that tracks execution statistics for every SQL statement executed against a database. DBSight queries this view on each worker tick to build slow-query snapshots and compute deltas between collections.
+
+## Enabling pg_stat_statements
+
+The extension requires two steps:
+
+**1. Add to `shared_preload_libraries` in `postgresql.conf`:**
+
+```ini
+shared_preload_libraries = 'pg_stat_statements'
+```
+
+Restart PostgreSQL after changing this setting.
+
+**2. Create the extension in your target database:**
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+```
+
+Verify it is active:
+
+```sql
+SELECT * FROM pg_stat_statements LIMIT 1;
+```
+
+If the query returns an error, the library was not loaded at startup.
+
+## Query Used by DBSight
+
+Source: `internal/adapter/slow_queries.go`
+
+```sql
+SELECT
+    queryid::text,
+    query,
+    calls,
+    total_exec_time,
+    mean_exec_time,
+    rows
+FROM pg_stat_statements
+WHERE mean_exec_time >= $1
+ORDER BY total_exec_time DESC
+LIMIT $2
+```
+
+### Parameters
+
+| Parameter | Type    | Default | Description                                         |
+|-----------|---------|---------|-----------------------------------------------------|
+| `$1`      | float64 | `0`     | Minimum mean execution time in milliseconds (filter) |
+| `$2`      | int     | `50`    | Maximum number of rows returned                     |
+
+Results are ordered by `total_exec_time DESC` so the most expensive queries (by cumulative cost) appear first.
+
+### Column Descriptions
+
+| Column           | Type    | Description                                           |
+|------------------|---------|-------------------------------------------------------|
+| `queryid`        | text    | Unique hash identifier for the normalized query       |
+| `query`          | text    | Normalized query text (literals replaced with `$n`)   |
+| `calls`          | bigint  | Total number of times the query was executed          |
+| `total_exec_time`| float8  | Cumulative execution time across all calls (ms)       |
+| `mean_exec_time` | float8  | Average execution time per call (ms)                  |
+| `rows`           | bigint  | Total rows returned or affected across all calls      |
+
+## How DBSight Uses This Data
+
+**Snapshot collection** — the background worker (30-second default interval) calls `GetSlowQueries` for every active connection. Each result set is stored as a timestamped snapshot in the DBSight metadata database.
+
+**Delta tracking** — on each subsequent snapshot, DBSight computes the difference in `calls`, `total_exec_time`, and `rows` between the current and previous snapshot. This reveals query throughput changes over time rather than all-time totals.
+
+**Filtering** — the `MinMeanMs` option maps to `$1`. Setting it above `0` excludes fast queries from snapshots, reducing storage and noise. Configure this per connection in the UI.
+
+## Related
+
+- [Slow Queries](/en/user-guide/slow-queries) — interpreting snapshot data in the UI
+- [Live Dashboard](/en/user-guide/live-dashboard) — real-time SSE stream of query deltas

@@ -1,0 +1,181 @@
+---
+title: "Mở rộng Adapter"
+description: "Cách thêm hỗ trợ cho các loại cơ sở dữ liệu mới như MySQL hoặc SQLite"
+---
+
+DBSight sử dụng mẫu adapter để cô lập tất cả logic dành riêng cho cơ sở dữ liệu sau một interface duy nhất. Thêm hỗ trợ cho một loại cơ sở dữ liệu mới (MySQL, SQLite, CockroachDB, v.v.) có nghĩa là tạo một file mới và đăng ký nó trong factory — không cần thay đổi các package API, Worker hay Store.
+
+## Interface DBAnalyzer
+
+Mọi adapter phải triển khai tất cả các phương thức trong `internal/adapter/adapter.go`:
+
+```go
+type DBAnalyzer interface {
+    Connect(ctx context.Context, dsn string) error
+    Close() error
+    GetSlowQueries(ctx context.Context, opts QueryOpts) ([]models.SlowQuery, error)
+    GetExplainPlan(ctx context.Context, query string, opts QueryOpts) (*models.ExplainPlan, error)
+    GetIndexStats(ctx context.Context) ([]models.IndexStat, error)
+    GetTableStats(ctx context.Context) ([]models.TableStat, error)
+    GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error)
+    GetDatabaseStats(ctx context.Context) (*models.DatabaseStats, error)
+}
+```
+
+### Mô tả Phương thức
+
+| Phương thức | Mô tả |
+|---|---|
+| `Connect` | Mở một connection pool sử dụng DSN đã giải mã |
+| `Close` | Giải phóng tất cả kết nối một cách an toàn |
+| `GetSlowQueries` | Trả về các truy vấn chậm hàng đầu, tương tự như `pg_stat_statements` |
+| `GetExplainPlan` | Chạy `EXPLAIN` trên một truy vấn; sử dụng giao dịch chỉ đọc |
+| `GetIndexStats` | Thống kê sử dụng per-index (lần quét, hàng đọc, kích thước) |
+| `GetTableStats` | Số lần quét tuần tự và số hàng per-table |
+| `GetDuplicateIndexes` | Tìm các chỉ mục có định nghĩa giống nhau |
+| `GetDatabaseStats` | Tên DB, kích thước, số kết nối, tỷ lệ cache hit |
+
+`QueryOpts` chứa các cài đặt thu thập:
+
+```go
+type QueryOpts struct {
+    Limit       int
+    MinMeanMs   float64
+    AnalyzeMode bool  // bao gồm ANALYZE trong EXPLAIN khi true
+}
+```
+
+## Từng Bước: Thêm MySQL Adapter
+
+### 1. Thêm phụ thuộc driver
+
+```bash
+go get github.com/go-sql-driver/mysql
+```
+
+### 2. Tạo file adapter
+
+Tạo `internal/adapter/mysql.go`:
+
+```go
+package adapter
+
+import (
+    "context"
+    "database/sql"
+    "fmt"
+
+    _ "github.com/go-sql-driver/mysql"
+    "github.com/lamngockhuong/dbsight/internal/models"
+)
+
+type MySQLAdapter struct {
+    db *sql.DB
+}
+
+func NewMySQLAdapter() *MySQLAdapter {
+    return &MySQLAdapter{}
+}
+
+func (a *MySQLAdapter) Connect(ctx context.Context, dsn string) error {
+    db, err := sql.Open("mysql", dsn)
+    if err != nil {
+        return fmt.Errorf("mysql open: %w", err)
+    }
+    if err := db.PingContext(ctx); err != nil {
+        return fmt.Errorf("mysql ping: %w", err)
+    }
+    a.db = db
+    return nil
+}
+
+func (a *MySQLAdapter) Close() error {
+    if a.db != nil {
+        return a.db.Close()
+    }
+    return nil
+}
+
+func (a *MySQLAdapter) GetSlowQueries(ctx context.Context, opts QueryOpts) ([]models.SlowQuery, error) {
+    // Truy vấn performance_schema.events_statements_summary_by_digest
+    // Ánh xạ các cột sang các trường models.SlowQuery
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetExplainPlan(ctx context.Context, query string, opts QueryOpts) (*models.ExplainPlan, error) {
+    // Sử dụng EXPLAIN FORMAT=JSON ...
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetIndexStats(ctx context.Context) ([]models.IndexStat, error) {
+    // Truy vấn information_schema.statistics + sys.schema_index_statistics
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetTableStats(ctx context.Context) ([]models.TableStat, error) {
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error) {
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetDatabaseStats(ctx context.Context) (*models.DatabaseStats, error) {
+    return nil, fmt.Errorf("not yet implemented")
+}
+```
+
+### 3. Đăng ký trong factory
+
+Chỉnh sửa `internal/adapter/adapter.go`, thêm case `"mysql"`:
+
+```go
+func NewAdapter(dbType string) (DBAnalyzer, error) {
+    switch dbType {
+    case "postgres":
+        return NewPostgresAdapter(), nil
+    case "mysql":
+        return NewMySQLAdapter(), nil
+    default:
+        return nil, fmt.Errorf("unsupported db type: %s", dbType)
+    }
+}
+```
+
+### 4. Cập nhật form kết nối frontend
+
+Trong `apps/web/src/components/connections/`, thêm `"mysql"` vào các tùy chọn select `db_type` để người dùng có thể chọn khi tạo kết nối.
+
+## Kiểm tra Adapter của bạn
+
+Viết các kiểm tra trong `internal/adapter/mysql_test.go`. Kiểm tra tích hợp yêu cầu một MySQL instance thực — sử dụng `testcontainers-go` hoặc một Docker Compose service:
+
+```go
+func TestMySQLAdapter_Connect(t *testing.T) {
+    dsn := os.Getenv("TEST_MYSQL_DSN")
+    if dsn == "" {
+        t.Skip("TEST_MYSQL_DSN not set")
+    }
+    a := NewMySQLAdapter()
+    err := a.Connect(context.Background(), dsn)
+    require.NoError(t, err)
+    defer a.Close()
+}
+```
+
+Chạy với:
+
+```bash
+TEST_MYSQL_DSN="user:password@tcp(localhost:3306)/testdb" go test ./internal/adapter/ -v -run TestMySQL
+```
+
+## Danh sách kiểm tra PR
+
+Trước khi mở pull request cho adapter mới:
+
+- [ ] Tất cả 8 phương thức interface được triển khai (không có stub `fmt.Errorf("not yet implemented")` cố định)
+- [ ] Kiểm tra unit bao gồm `Connect`, `Close` và ít nhất `GetSlowQueries`
+- [ ] Kiểm tra tích hợp với một database instance thực (bỏ qua khi biến môi trường vắng mặt)
+- [ ] Case factory được thêm trong `NewAdapter`
+- [ ] Tùy chọn `db_type` frontend được thêm
+- [ ] Trang tài liệu được cập nhật hoặc thêm mới trong `apps/docs/`

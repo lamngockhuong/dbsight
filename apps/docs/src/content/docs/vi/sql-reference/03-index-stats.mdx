@@ -1,0 +1,119 @@
+---
+title: Thống kê Chỉ mục & Bảng
+description: Các truy vấn SQL để kiểm tra mức độ sử dụng chỉ mục, phát hiện chỉ mục trùng lặp và thống kê bảng
+---
+
+DBSight chạy ba truy vấn đối với các danh mục hệ thống PostgreSQL để hiển thị tình trạng chỉ mục: thống kê sử dụng chỉ mục, phát hiện chỉ mục trùng lặp và thống kê cấp bảng. Cả ba đều chỉ đọc và an toàn để chạy trên môi trường production.
+
+## Mức độ Sử dụng Chỉ mục
+
+Nguồn: `internal/adapter/indexes.go` — `GetIndexStats`
+
+```sql
+SELECT
+    schemaname,
+    relname,
+    indexrelname,
+    idx_scan,
+    idx_tup_read,
+    idx_tup_fetch,
+    pg_relation_size(indexrelid) AS index_size_bytes
+FROM pg_stat_user_indexes
+ORDER BY idx_scan ASC, pg_relation_size(indexrelid) DESC
+```
+
+Kết quả được sắp xếp theo `idx_scan ASC` để các chỉ mục không được sử dụng (0 lần quét) xuất hiện đầu tiên, sau đó theo kích thước giảm dần để các chỉ mục lớn không được sử dụng dễ nhìn thấy nhất.
+
+### Mô tả các cột
+
+| Cột                | Kiểu   | Mô tả                                                          |
+|--------------------|--------|----------------------------------------------------------------|
+| `schemaname`       | name   | Schema chứa bảng                                               |
+| `relname`          | name   | Tên bảng                                                       |
+| `indexrelname`     | name   | Tên chỉ mục                                                    |
+| `idx_scan`         | bigint | Số lần chỉ mục được trình lập kế hoạch sử dụng kể từ lần reset cuối |
+| `idx_tup_read`     | bigint | Số tuple trả về từ các lần quét chỉ mục                       |
+| `idx_tup_fetch`    | bigint | Số tuple lấy từ heap thông qua chỉ mục này                    |
+| `index_size_bytes` | bigint | Kích thước trên đĩa của chỉ mục tính bằng byte               |
+
+### Diễn giải Kết quả
+
+- **`idx_scan = 0`** — chỉ mục chưa bao giờ được sử dụng kể từ khi thống kê được reset lần cuối. Nếu cơ sở dữ liệu đã chạy dưới tải bình thường trong nhiều ngày hoặc nhiều tuần, chỉ mục này là ứng viên để xóa. Xác minh thời điểm `SELECT pg_stat_reset()` trước khi xóa.
+- **Kích thước lớn với ít lần quét** — chỉ mục tiêu tốn chi phí ghi và dung lượng đĩa mà mang lại ít lợi ích đọc.
+- **`idx_tup_fetch` thấp hơn nhiều so với `idx_tup_read`** — chỉ mục được dùng để quét nhưng nhiều tuple được lấy bị lọc ra bởi điều kiện khả năng hiển thị hoặc vị từ bổ sung, có thể cho thấy chỉ mục chỉ khớp một phần.
+
+## Chỉ mục Trùng lặp
+
+Nguồn: `internal/adapter/indexes.go` — `GetDuplicateIndexes`
+
+```sql
+SELECT
+    a.tablename,
+    a.indexname AS index1,
+    b.indexname AS index2,
+    a.indexdef
+FROM pg_indexes a
+JOIN pg_indexes b
+    ON a.tablename = b.tablename
+    AND a.indexdef = b.indexdef
+    AND a.indexname < b.indexname
+WHERE a.schemaname NOT IN ('pg_catalog', 'information_schema')
+ORDER BY a.tablename, a.indexname
+```
+
+Phép tự nối trên `pg_indexes` khớp các cặp có cùng `tablename` và `indexdef`. Điều kiện `a.indexname < b.indexname` đảm bảo mỗi cặp trùng lặp chỉ xuất hiện một lần.
+
+### Mô tả các cột
+
+| Cột          | Kiểu | Mô tả                                           |
+|--------------|------|-------------------------------------------------|
+| `tablename`  | name | Bảng mà cả hai chỉ mục thuộc về                |
+| `index1`     | name | Tên chỉ mục đầu tiên (theo thứ tự bảng chữ cái) |
+| `index2`     | name | Tên chỉ mục thứ hai (theo thứ tự bảng chữ cái) |
+| `indexdef`   | text | Định nghĩa chỉ mục đầy đủ (giống nhau cho cả hai) |
+
+### Diễn giải Kết quả
+
+Bất kỳ hàng nào được trả về ở đây đại diện cho hai chỉ mục có cùng định nghĩa. Một trong số chúng là thừa — nó chiếm dung lượng đĩa và làm chậm mọi thao tác `INSERT`, `UPDATE` và `DELETE` trên bảng mà không thêm bất kỳ khả năng truy vấn nào. Xóa một trong mỗi cặp sau khi xác nhận không có chỉ mục nào được sử dụng bởi ràng buộc duy nhất hoặc khóa ngoại.
+
+Các chỉ mục trùng lặp thường xuất hiện sau khi migration tạo lại chỉ mục mà không xóa các chỉ mục gốc, hoặc sau khi `pg_restore` chạy đối với cơ sở dữ liệu đã có sẵn các chỉ mục.
+
+## Thống kê Bảng
+
+Nguồn: `internal/adapter/indexes.go` — `GetTableStats`
+
+```sql
+SELECT
+    schemaname,
+    relname,
+    seq_scan,
+    seq_tup_read,
+    n_live_tup,
+    pg_total_relation_size(relid) AS table_size_bytes
+FROM pg_stat_user_tables
+ORDER BY seq_scan DESC
+```
+
+Kết quả được sắp xếp theo `seq_scan DESC` để hiển thị các bảng nhận nhiều lần quét toàn bộ nhất.
+
+### Mô tả các cột
+
+| Cột                | Kiểu   | Mô tả                                                         |
+|--------------------|--------|---------------------------------------------------------------|
+| `schemaname`       | name   | Schema chứa bảng                                              |
+| `relname`          | name   | Tên bảng                                                      |
+| `seq_scan`         | bigint | Số lần quét tuần tự (toàn bộ) trên bảng này                  |
+| `seq_tup_read`     | bigint | Tổng số tuple đọc qua quét tuần tự                           |
+| `n_live_tup`       | bigint | Số hàng sống ước tính                                         |
+| `table_size_bytes` | bigint | Tổng kích thước trên đĩa bao gồm các chỉ mục và TOAST (byte) |
+
+### Diễn giải Kết quả
+
+- **`seq_scan` cao trên bảng lớn** — tín hiệu hành động nhất. Nếu `seq_tup_read / seq_scan` gần bằng `n_live_tup`, hầu hết mọi lần quét đều đọc toàn bộ bảng. Một chỉ mục trên cột lọc phổ biến nhất sẽ chuyển đổi những lần này thành các thao tác `Index Scan`.
+- **`seq_scan` cao trên bảng nhỏ** — thường chấp nhận được. Trình lập kế hoạch của PostgreSQL cố ý chọn quét tuần tự trên các bảng nhỏ vì chúng nhanh hơn tra cứu chỉ mục khi hầu hết các hàng đều đủ điều kiện.
+- **`n_live_tup` thấp hơn nhiều so với kỳ vọng** — có thể cho thấy `DELETE` tích cực mà không có `VACUUM`, gây ra phình bảng. Kiểm tra với `pg_relation_size` so với `pg_total_relation_size`.
+
+## Xem thêm
+
+- [Phân tích Chỉ mục](/vi/user-guide/index-analysis) — xem và xử lý dữ liệu chỉ mục trong giao diện người dùng
+- [pg_stat_statements](/vi/sql-reference/pg-stat-statements) — thu thập truy vấn chậm

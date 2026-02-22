@@ -1,0 +1,63 @@
+---
+title: "Chế độ Paste"
+description: "Phân tích log truy vấn chậm mà không cần kết nối trực tiếp đến cơ sở dữ liệu"
+---
+
+Chế độ Paste cho phép bạn phân tích đầu ra log truy vấn chậm của PostgreSQL mà không cần kết nối trực tiếp đến cơ sở dữ liệu. Tính năng này hữu ích khi bạn đã xuất log từ hệ thống production không thể tiếp cận trực tiếp từ nơi DBSight đang chạy.
+
+## Khi nào Dùng Chế độ Paste
+
+- Bạn không thể mở kết nối trực tiếp đến cơ sở dữ liệu production (tường lửa, VPN, chính sách bảo mật).
+- Đồng nghiệp gửi cho bạn một file log truy vấn chậm để xem xét.
+- Bạn muốn phân tích một Snapshot log lịch sử ngoài chu kỳ theo dõi thông thường.
+- Bạn đang cộng tác với nhóm và muốn chia sẻ một đoạn log cụ thể để thảo luận.
+
+## Cách Sử dụng
+
+1. Điều hướng đến phần **Paste** trong thanh bên trái.
+2. Dán văn bản log truy vấn chậm của bạn vào vùng nhập liệu.
+3. Nhấp **Analyze**.
+
+DBSight phân tích văn bản được dán và trích xuất thông tin truy vấn từ đó.
+
+## Nên Dán Gì
+
+DBSight chấp nhận định dạng log truy vấn chậm của PostgreSQL. Một mục log truy vấn chậm điển hình trông như sau:
+
+```
+2024-01-15 14:32:01 UTC [12345]: LOG:  duration: 1523.456 ms  statement: SELECT orders.*, users.email
+  FROM orders
+  JOIN users ON orders.user_id = users.id
+  WHERE orders.status = 'pending'
+  ORDER BY orders.created_at DESC
+  LIMIT 100;
+```
+
+Bạn có thể dán một mục đơn lẻ hoặc nhiều mục liên tiếp. DBSight xử lý từng mục và xây dựng đầu ra phân tích.
+
+## Đầu ra Phân tích
+
+Sau khi phân tích, chế độ Paste hiển thị kết quả cùng định dạng với bảng truy vấn chậm khi có kết nối:
+
+- Văn bản truy vấn đã được trích xuất
+- Thông tin thời gian / độ trễ được phân tích từ dòng log
+- Truy vấn được xếp hạng theo thời gian thực thi
+
+Từ kết quả bạn có thể nhấp vào bất kỳ truy vấn nào để mở view chi tiết. Lưu ý rằng [kế hoạch EXPLAIN](/vi/user-guide/03-explain-plans) yêu cầu kết nối trực tiếp và không khả dụng trong chế độ Paste — bạn cần kết nối đến cơ sở dữ liệu riêng biệt để chạy EXPLAIN.
+
+## Trường hợp Sử dụng: Cộng tác Nhóm
+
+Một quy trình phổ biến cho các nhóm:
+
+1. DBA xuất log truy vấn chậm từ production: `pg_read_file('pg_log/postgresql.log')` hoặc qua công cụ tổng hợp log.
+2. Dán phần liên quan vào giao diện paste của DBSight.
+3. Chia sẻ URL phân tích hoặc ảnh chụp màn hình với nhóm phát triển.
+4. Các nhà phát triển xác định các truy vấn có vấn đề và xem xét [kế hoạch EXPLAIN](/vi/user-guide/03-explain-plans) trên cơ sở dữ liệu staging.
+
+## Giới hạn
+
+- Chế độ Paste phân tích thông tin thời gian và văn bản truy vấn từ các mục log. Thống kê tổng hợp (tổng số lần gọi, theo dõi Delta, sparkline) không khả dụng — những thứ đó yêu cầu kết nối `pg_stat_statements` trực tiếp.
+- Các truy vấn với dòng log bị biên tập nhiều hoặc bị cắt ngắn có thể không được phân tích đúng.
+- EXPLAIN và phân tích chỉ mục yêu cầu [kết nối](/vi/user-guide/01-connections) trực tiếp.
+
+**Tiếp theo:** [Bảng điều khiển Trực tiếp](/vi/user-guide/06-live-dashboard) — metrics theo thời gian thực với SSE streaming.

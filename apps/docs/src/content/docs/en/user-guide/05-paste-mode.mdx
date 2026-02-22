@@ -1,0 +1,63 @@
+---
+title: "Paste Mode"
+description: "Analyze slow query logs without a direct database connection"
+---
+
+Paste mode lets you analyze PostgreSQL slow query log output without requiring a live database connection. It is useful when you have exported logs from a production system that is not directly reachable from where DBSight is running.
+
+## When to Use Paste Mode
+
+- You cannot open a direct connection to the production database (firewall, VPN, security policy).
+- A colleague sent you a slow query log file to review.
+- You want to analyze a historical log snapshot outside of the normal monitoring cycle.
+- You are collaborating with a team and want to share a specific log excerpt for discussion.
+
+## How to Use
+
+1. Navigate to the **Paste** section in the left sidebar.
+2. Paste your slow query log text into the input area.
+3. Click **Analyze**.
+
+DBSight parses the pasted text and extracts query information from it.
+
+## What to Paste
+
+DBSight accepts PostgreSQL slow query log format. A typical slow query log entry looks like:
+
+```
+2024-01-15 14:32:01 UTC [12345]: LOG:  duration: 1523.456 ms  statement: SELECT orders.*, users.email
+  FROM orders
+  JOIN users ON orders.user_id = users.id
+  WHERE orders.status = 'pending'
+  ORDER BY orders.created_at DESC
+  LIMIT 100;
+```
+
+You can paste a single entry or multiple entries in sequence. DBSight processes each one and builds the analysis output.
+
+## Analysis Output
+
+After parsing, paste mode displays results in the same format as the connected slow query table:
+
+- Extracted query text
+- Duration / timing information parsed from the log line
+- Query ranked by execution time
+
+From the results you can click any query to open the detail view. Note that [EXPLAIN plans](/en/user-guide/03-explain-plans) require a live connection and are not available in paste mode — you will need to connect to a database separately to run EXPLAIN.
+
+## Use Case: Team Collaboration
+
+A common workflow for teams:
+
+1. DBA exports slow query logs from production: `pg_read_file('pg_log/postgresql.log')` or via log aggregation tooling.
+2. Paste the relevant section into DBSight's paste interface.
+3. Share the analysis URL or screenshot with the development team.
+4. Developers identify the problematic queries and review [EXPLAIN plans](/en/user-guide/03-explain-plans) against a staging database.
+
+## Limitations
+
+- Paste mode parses timing and query text from log entries. Aggregate statistics (total calls, delta tracking, sparklines) are not available — those require the live `pg_stat_statements` connection.
+- Queries with heavily redacted or truncated log lines may not parse correctly.
+- EXPLAIN and index analysis require a live [connection](/en/user-guide/01-connections).
+
+**Next:** [Live Dashboard](/en/user-guide/06-live-dashboard) — real-time metrics with SSE streaming.

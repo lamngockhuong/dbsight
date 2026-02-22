@@ -22,7 +22,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-//go:embed web/dist
+//go:embed apps/web/dist
 var webDist embed.FS
 
 func main() {
@@ -96,7 +96,7 @@ func runServer(cfg *config.Config) error {
 		NewAdapter: adapter.NewAdapter,
 	}
 
-	webFS, err := fs.Sub(webDist, "web/dist")
+	webFS, err := fs.Sub(webDist, "apps/web/dist")
 	if err != nil {
 		return fmt.Errorf("static files: %w", err)
 	}

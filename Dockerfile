@@ -1,17 +1,24 @@
 FROM node:20-alpine AS web-builder
 RUN corepack enable && corepack prepare pnpm@latest --activate
-WORKDIR /web
-COPY web/package.json web/pnpm-lock.yaml ./
+WORKDIR /build
+
+# Copy workspace manifests first (cache layer)
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY apps/web/package.json ./apps/web/
+
+# Install deps
 RUN pnpm install --frozen-lockfile
-COPY web/ .
-RUN pnpm run build
+
+# Copy source and build
+COPY apps/web/ ./apps/web/
+RUN pnpm --filter web build
 
 FROM golang:1.26-alpine AS go-builder
 WORKDIR /app
 COPY go.* ./
 RUN go mod download
 COPY . .
-COPY --from=web-builder /web/dist ./web/dist
+COPY --from=web-builder /build/apps/web/dist ./apps/web/dist
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o dbsight .
 
 FROM alpine:3.19

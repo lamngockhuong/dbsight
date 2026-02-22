@@ -1,0 +1,160 @@
+---
+title: "Docker Deployment"
+description: "Deploy DBSight with Docker and Docker Compose"
+---
+
+Docker is the recommended way to run DBSight. The included `docker-compose.yml` wires together PostgreSQL (metadata DB), the migration runner, and the application in the correct order.
+
+## Quick Start
+
+```bash
+git clone https://github.com/lamngockhuong/dbsight.git
+cd dbsight
+
+# Create env file with required secrets
+cp .env.example .env   # then edit values below
+
+docker-compose up -d
+```
+
+Open **http://localhost:42198**.
+
+## Environment File
+
+Create a `.env` file in the project root before running Compose:
+
+```bash
+# .env
+POSTGRES_PASSWORD=change-me-strong-password
+ENCRYPTION_KEY=replace-with-64-hex-chars-generated-by-openssl-rand-hex-32-here00
+
+# Optional — default is 42198
+PORT=42198
+```
+
+Generate a secure `ENCRYPTION_KEY`:
+
+```bash
+openssl rand -hex 32
+```
+
+The key must be exactly 64 hexadecimal characters (32 bytes). DBSight will refuse to start with an invalid key.
+
+## Docker Compose Structure
+
+```yaml
+services:
+  postgres:
+    image: postgres:18-alpine
+    command: postgres -c shared_preload_libraries=pg_stat_statements
+    environment:
+      POSTGRES_DB: dbsight
+      POSTGRES_USER: dbsight
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5499:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbsight"]
+      interval: 5s
+      retries: 5
+
+  migrate:
+    build: .
+    command: migrate
+    environment:
+      DATABASE_URL: postgres://dbsight:${POSTGRES_PASSWORD}@postgres:5432/dbsight?sslmode=disable
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: .
+    command: serve
+    ports:
+      - "${PORT:-42198}:42198"
+    environment:
+      DATABASE_URL: postgres://dbsight:${POSTGRES_PASSWORD}@postgres:5432/dbsight?sslmode=disable
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      WORKER_INTERVAL_SECS: "30"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:42198/healthz || exit 1"]
+      interval: 10s
+      retries: 3
+```
+
+Key points:
+
+- `migrate` runs once (`restart: "no"`) and must complete successfully before `app` starts
+- `postgres` uses `pg_isready` health check — `migrate` waits on this before running
+- The `app` container connects to `postgres` by service name (`postgres:5432`) — not `localhost`
+
+## Dockerfile Walkthrough
+
+The multi-stage build keeps the final image small (~30 MB):
+
+**Stage 1 — web builder** (`node:20-alpine`): installs pnpm, runs `pnpm --filter web build`, outputs `apps/web/dist/`.
+
+**Stage 2 — go builder** (`golang:1.26-alpine`): copies Go source + the compiled web assets, builds a statically linked binary with `CGO_ENABLED=0`.
+
+**Stage 3 — runtime** (`alpine:3.19`): copies only the final binary, runs as a non-root `appuser`. No Node, no Go toolchain in the shipped image.
+
+```dockerfile
+FROM node:20-alpine AS web-builder
+# ... builds React SPA
+
+FROM golang:1.26-alpine AS go-builder
+# ... compiles Go binary with embedded SPA
+
+FROM alpine:3.19
+RUN adduser -D -h /app appuser
+COPY --from=go-builder /app/dbsight .
+USER appuser
+EXPOSE 42198
+ENTRYPOINT ["./dbsight"]
+CMD ["serve"]
+```
+
+## Building a Custom Image
+
+To build and tag locally without Compose:
+
+```bash
+docker build -t dbsight:latest .
+docker run -p 42198:42198 \
+  -e DATABASE_URL="postgres://user:pass@host:5432/dbsight?sslmode=disable" \
+  -e ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+  dbsight:latest
+```
+
+Run migrations first in a one-shot container:
+
+```bash
+docker run --rm \
+  -e DATABASE_URL="postgres://user:pass@host:5432/dbsight?sslmode=disable" \
+  -e ENCRYPTION_KEY="your-64-hex-key" \
+  dbsight:latest migrate
+```
+
+## Useful Commands
+
+```bash
+# View logs
+docker-compose logs -f app
+
+# Restart only the app (after config change)
+docker-compose restart app
+
+# Stop everything, keep volumes
+docker-compose down
+
+# Stop and remove volumes (destructive — deletes all stored data)
+docker-compose down -v
+```
+
+**Next:** [Production Deployment](/en/deployment/02-production) — systemd, reverse proxy, and TLS.

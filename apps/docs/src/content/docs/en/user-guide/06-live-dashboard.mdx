@@ -1,0 +1,76 @@
+---
+title: "Live Dashboard"
+description: "Real-time database metrics with Server-Sent Events streaming"
+---
+
+DBSight streams live metrics to the browser using Server-Sent Events (SSE). As the background worker completes each collection pass, new data appears in the dashboard automatically — no polling from the browser, no manual refresh.
+
+## How SSE Streaming Works
+
+When you open a connection's query view, the browser opens a persistent HTTP connection to:
+
+```
+GET /api/connections/{id}/queries/stream
+```
+
+The server keeps this connection open and pushes newline-delimited JSON events each time the worker deposits a new snapshot. The browser's `EventSource` API receives each event and updates the query table in place.
+
+This is more efficient than short-polling: one persistent connection per open tab, zero wasted requests during quiet periods.
+
+## Auto-Reconnect
+
+If the connection drops (network interruption, server restart), the SSE hook automatically attempts to reconnect with a brief backoff delay. The browser status indicator shows the connection state. No data is lost — on reconnect the latest snapshot is fetched immediately.
+
+## Real-Time Metrics
+
+Each SSE event delivers:
+
+- Updated query rows with fresh cumulative stats
+- **Delta columns** showing changes since the previous snapshot (calls, total time)
+- Sparkline data points appended to the existing series
+
+New queries that appeared since the last snapshot are added to the table. Queries whose stats have not changed remain in place.
+
+## Database Stats
+
+The dashboard header shows database-level stats collected alongside query data:
+
+| Metric | Description |
+|---|---|
+| **Database Size** | Total disk space used by the monitored database |
+| **Active Connections** | Current number of client connections |
+| **Max Connections** | `max_connections` setting from `pg_settings` |
+| **Cache Hit Ratio** | Percentage of block reads served from `shared_buffers` |
+
+These update on every worker pass alongside the query data.
+
+## Cache Hit Ratio
+
+The cache hit ratio is one of the most actionable metrics on the dashboard:
+
+| Ratio | Interpretation |
+|---|---|
+| **> 99%** | Healthy — most reads served from memory |
+| **95–99%** | Acceptable — monitor for downward trend |
+| **< 95%** | Potentially under-provisioned `shared_buffers` |
+| **< 90%** | Investigate — frequent disk reads, likely needs more RAM |
+
+A persistently low cache hit ratio usually means `shared_buffers` in `postgresql.conf` is too small for your working set. As a starting point, PostgreSQL recommends setting `shared_buffers` to 25% of available RAM.
+
+## Worker Polling Interval
+
+The background worker runs on a configurable interval (default 30 seconds, set via `WORKER_INTERVAL_SECS`). This interval determines the minimum granularity of delta tracking and how quickly new slow queries appear in the live view.
+
+The worker enforces a concurrency limit of 10 simultaneous collection jobs — if you have more than 10 connections, some will queue behind others on each tick.
+
+## Historical Data
+
+SSE delivers live data for the current session. To review historical snapshots across multiple collection passes, use the history endpoint accessed from the query table's **History** button:
+
+```
+GET /api/connections/{id}/queries/history
+```
+
+This returns all stored snapshots for the connection, which you can use to identify trends over time.
+
+**See also:** [Slow Query Analysis](/en/user-guide/02-slow-queries) — understanding query metrics and deltas.

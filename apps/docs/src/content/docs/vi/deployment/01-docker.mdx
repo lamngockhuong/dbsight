@@ -1,0 +1,160 @@
+---
+title: "Triển khai Docker"
+description: "Triển khai DBSight với Docker và Docker Compose"
+---
+
+Docker là cách được khuyến nghị để chạy DBSight. File `docker-compose.yml` đi kèm kết nối PostgreSQL (metadata DB), trình chạy migration và ứng dụng theo đúng thứ tự.
+
+## Khởi động Nhanh
+
+```bash
+git clone https://github.com/lamngockhuong/dbsight.git
+cd dbsight
+
+# Tạo file env với các secret cần thiết
+cp .env.example .env   # sau đó chỉnh sửa các giá trị bên dưới
+
+docker-compose up -d
+```
+
+Mở **http://localhost:42198**.
+
+## File Môi trường
+
+Tạo file `.env` trong thư mục gốc của dự án trước khi chạy Compose:
+
+```bash
+# .env
+POSTGRES_PASSWORD=change-me-strong-password
+ENCRYPTION_KEY=replace-with-64-hex-chars-generated-by-openssl-rand-hex-32-here00
+
+# Tùy chọn — mặc định là 42198
+PORT=42198
+```
+
+Tạo `ENCRYPTION_KEY` an toàn:
+
+```bash
+openssl rand -hex 32
+```
+
+Khóa phải chính xác 64 ký tự thập lục phân (32 byte). DBSight sẽ từ chối khởi động với khóa không hợp lệ.
+
+## Cấu trúc Docker Compose
+
+```yaml
+services:
+  postgres:
+    image: postgres:18-alpine
+    command: postgres -c shared_preload_libraries=pg_stat_statements
+    environment:
+      POSTGRES_DB: dbsight
+      POSTGRES_USER: dbsight
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5499:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbsight"]
+      interval: 5s
+      retries: 5
+
+  migrate:
+    build: .
+    command: migrate
+    environment:
+      DATABASE_URL: postgres://dbsight:${POSTGRES_PASSWORD}@postgres:5432/dbsight?sslmode=disable
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: .
+    command: serve
+    ports:
+      - "${PORT:-42198}:42198"
+    environment:
+      DATABASE_URL: postgres://dbsight:${POSTGRES_PASSWORD}@postgres:5432/dbsight?sslmode=disable
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      WORKER_INTERVAL_SECS: "30"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:42198/healthz || exit 1"]
+      interval: 10s
+      retries: 3
+```
+
+Các điểm chính:
+
+- `migrate` chạy một lần (`restart: "no"`) và phải hoàn thành thành công trước khi `app` khởi động
+- `postgres` sử dụng health check `pg_isready` — `migrate` chờ điều này trước khi chạy
+- Container `app` kết nối với `postgres` bằng tên service (`postgres:5432`) — không phải `localhost`
+
+## Hướng dẫn Dockerfile
+
+Build đa giai đoạn giữ cho image cuối cùng nhỏ gọn (~30 MB):
+
+**Giai đoạn 1 — web builder** (`node:20-alpine`): cài đặt pnpm, chạy `pnpm --filter web build`, xuất ra `apps/web/dist/`.
+
+**Giai đoạn 2 — go builder** (`golang:1.26-alpine`): sao chép Go source + các web asset đã biên dịch, build một binary liên kết tĩnh với `CGO_ENABLED=0`.
+
+**Giai đoạn 3 — runtime** (`alpine:3.19`): chỉ sao chép binary cuối cùng, chạy với tư cách người dùng không phải root `appuser`. Không có Node, không có Go toolchain trong image đã ship.
+
+```dockerfile
+FROM node:20-alpine AS web-builder
+# ... build React SPA
+
+FROM golang:1.26-alpine AS go-builder
+# ... biên dịch Go binary với SPA nhúng
+
+FROM alpine:3.19
+RUN adduser -D -h /app appuser
+COPY --from=go-builder /app/dbsight .
+USER appuser
+EXPOSE 42198
+ENTRYPOINT ["./dbsight"]
+CMD ["serve"]
+```
+
+## Build Image Tùy chỉnh
+
+Để build và gắn tag cục bộ mà không dùng Compose:
+
+```bash
+docker build -t dbsight:latest .
+docker run -p 42198:42198 \
+  -e DATABASE_URL="postgres://user:pass@host:5432/dbsight?sslmode=disable" \
+  -e ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+  dbsight:latest
+```
+
+Chạy migration trước trong một container một lần:
+
+```bash
+docker run --rm \
+  -e DATABASE_URL="postgres://user:pass@host:5432/dbsight?sslmode=disable" \
+  -e ENCRYPTION_KEY="your-64-hex-key" \
+  dbsight:latest migrate
+```
+
+## Các Lệnh Hữu ích
+
+```bash
+# Xem log
+docker-compose logs -f app
+
+# Khởi động lại chỉ app (sau khi thay đổi cấu hình)
+docker-compose restart app
+
+# Dừng tất cả, giữ volume
+docker-compose down
+
+# Dừng và xóa volume (phá hủy — xóa tất cả dữ liệu đã lưu)
+docker-compose down -v
+```
+
+**Tiếp theo:** [Triển khai Production](/vi/deployment/02-production) — systemd, reverse proxy và TLS.

@@ -1,0 +1,136 @@
+---
+title: "Đóng góp"
+description: "Cách thiết lập môi trường phát triển và đóng góp cho DBSight"
+---
+
+Chúng tôi hoan nghênh mọi đóng góp — sửa lỗi, adapter cơ sở dữ liệu mới, cải tiến giao diện và tài liệu đều được trân trọng. Trang này bao gồm mọi thứ cần thiết để đi từ clone mới đến môi trường phát triển đang chạy.
+
+## Yêu cầu Trước
+
+| Công cụ | Phiên bản tối thiểu | Ghi chú |
+|---|---|---|
+| Go | 1.22 | Kiểm tra bằng `go version` |
+| Node.js | 20 | `node --version` |
+| pnpm | 9 | `npm i -g pnpm` hoặc `corepack enable` |
+| PostgreSQL | 14 | Phải có `pg_stat_statements` được kích hoạt |
+| Docker + Compose | bất kỳ phiên bản gần đây | Tùy chọn — đơn giản hóa việc thiết lập metadata DB |
+
+## Clone và Cài đặt
+
+```bash
+git clone https://github.com/lamngockhuong/dbsight.git
+cd dbsight
+
+# Cài đặt các phụ thuộc frontend (pnpm workspaces)
+pnpm install
+```
+
+Monorepo sử dụng pnpm workspaces với hai ứng dụng:
+
+- `apps/web` — React + TypeScript SPA (Vite, shadcn/ui, TanStack Table)
+- `apps/docs` — Trang tài liệu
+
+## Quy trình Phát triển
+
+### 1. Khởi động cơ sở dữ liệu metadata
+
+```bash
+# Khởi động một PostgreSQL cục bộ với pg_stat_statements được cấu hình sẵn
+docker-compose up -d postgres
+```
+
+Nếu bạn dùng PostgreSQL cài đặt cục bộ, hãy đảm bảo `pg_stat_statements` có trong `shared_preload_libraries` và tạo cơ sở dữ liệu thủ công.
+
+### 2. Đặt biến môi trường
+
+```bash
+cp .env.example .env   # nếu tồn tại, nếu không thì tạo thủ công
+```
+
+`.env` tối thiểu cho môi trường phát triển:
+
+```bash
+DATABASE_URL=postgres://dbsight:secret@localhost:5499/dbsight?sslmode=disable
+ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000001
+```
+
+`ENCRYPTION_KEY` phải chính xác 64 ký tự hex. Giá trị trên chỉ an toàn cho môi trường phát triển cục bộ — không bao giờ sử dụng trong môi trường production.
+
+### 3. Chạy migration
+
+```bash
+go run . migrate
+```
+
+### 4. Khởi động API server
+
+```bash
+go run . serve
+```
+
+Server lắng nghe tại `http://localhost:42198`.
+
+### 5. Khởi động frontend dev server
+
+Trong một terminal riêng biệt:
+
+```bash
+pnpm --filter web dev
+```
+
+Vite proxy các yêu cầu `/api` đến `:42198`. Mở `http://localhost:5173` cho frontend với hot-reloading.
+
+## Chạy Kiểm tra
+
+```bash
+# Kiểm tra unit Go
+go test ./internal/...
+
+# Phân tích tĩnh Go
+go vet ./internal/...
+
+# Kiểm tra lint + format frontend (Biome)
+pnpm --filter web lint
+
+# Tự động sửa frontend
+pnpm --filter web lint:fix
+```
+
+Chạy một file kiểm tra đơn lẻ:
+
+```bash
+go test ./internal/crypto/ -v -run TestEncryptDecrypt
+```
+
+## Phong cách Code
+
+**Go:** Tuân theo các quy ước Go tiêu chuẩn. Chạy `go vet` trước khi commit. Không có linter bên ngoài nào được bắt buộc, nhưng Go idiom được kỳ vọng — tên biến ngắn trong phạm vi nhỏ, lỗi được trả về chứ không panic, context được truyền xuyên suốt.
+
+**TypeScript / React:** [Biome](https://biomejs.dev/) xử lý cả lint và format. Chạy `pnpm --filter web lint:fix` để tự động sửa hầu hết các vấn đề trước khi mở PR.
+
+## Hướng dẫn Pull Request
+
+1. Fork repo và tạo branch: `git checkout -b feat/mysql-adapter`
+2. Giữ commit tập trung — một thay đổi logic mỗi commit
+3. Thêm hoặc cập nhật kiểm tra cho bất kỳ hành vi nào đã thay đổi
+4. Chạy `go test ./internal/...` và `pnpm --filter web lint` — cả hai phải pass
+5. Viết mô tả PR rõ ràng: những gì đã thay đổi, tại sao và cách kiểm tra
+6. Với adapter cơ sở dữ liệu mới, hãy theo hướng dẫn [Mở rộng Adapter](/vi/developer-guide/04-extending-adapters)
+
+## Cấu trúc Dự án (Monorepo)
+
+```
+dbsight/
+├── apps/
+│   ├── web/          — React SPA (pnpm workspace: "web")
+│   └── docs/         — Trang tài liệu
+├── internal/         — Go packages (không thể import từ bên ngoài)
+├── migrations/       — Các file SQL migration nhúng
+├── main.go           — Điểm vào
+├── Makefile          — Phím tắt build / test
+├── Dockerfile        — Build đa giai đoạn
+├── docker-compose.yml
+└── pnpm-workspace.yaml
+```
+
+**Tiếp theo:** [Tài liệu tham chiếu API](/vi/developer-guide/03-api-reference) — tài liệu endpoint đầy đủ.

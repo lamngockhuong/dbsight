@@ -1,0 +1,181 @@
+---
+title: "Extending Adapters"
+description: "How to add support for new database types like MySQL or SQLite"
+---
+
+DBSight uses an adapter pattern to isolate all database-specific logic behind a single interface. Adding support for a new database type (MySQL, SQLite, CockroachDB, etc.) means creating one new file and registering it in the factory — no changes to the API, worker, or store packages.
+
+## The DBAnalyzer Interface
+
+Every adapter must implement all methods in `internal/adapter/adapter.go`:
+
+```go
+type DBAnalyzer interface {
+    Connect(ctx context.Context, dsn string) error
+    Close() error
+    GetSlowQueries(ctx context.Context, opts QueryOpts) ([]models.SlowQuery, error)
+    GetExplainPlan(ctx context.Context, query string, opts QueryOpts) (*models.ExplainPlan, error)
+    GetIndexStats(ctx context.Context) ([]models.IndexStat, error)
+    GetTableStats(ctx context.Context) ([]models.TableStat, error)
+    GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error)
+    GetDatabaseStats(ctx context.Context) (*models.DatabaseStats, error)
+}
+```
+
+### Method Descriptions
+
+| Method | Description |
+|---|---|
+| `Connect` | Open a connection pool using the decrypted DSN |
+| `Close` | Release all connections gracefully |
+| `GetSlowQueries` | Return top slow queries, analogous to `pg_stat_statements` |
+| `GetExplainPlan` | Run `EXPLAIN` on a query; use a read-only transaction |
+| `GetIndexStats` | Per-index usage stats (scans, rows read, size) |
+| `GetTableStats` | Per-table sequential scan and row counts |
+| `GetDuplicateIndexes` | Find indexes with identical definitions |
+| `GetDatabaseStats` | DB name, size, connection counts, cache hit ratio |
+
+`QueryOpts` carries collection settings:
+
+```go
+type QueryOpts struct {
+    Limit       int
+    MinMeanMs   float64
+    AnalyzeMode bool  // include ANALYZE in EXPLAIN when true
+}
+```
+
+## Step-by-Step: Adding a MySQL Adapter
+
+### 1. Add the driver dependency
+
+```bash
+go get github.com/go-sql-driver/mysql
+```
+
+### 2. Create the adapter file
+
+Create `internal/adapter/mysql.go`:
+
+```go
+package adapter
+
+import (
+    "context"
+    "database/sql"
+    "fmt"
+
+    _ "github.com/go-sql-driver/mysql"
+    "github.com/lamngockhuong/dbsight/internal/models"
+)
+
+type MySQLAdapter struct {
+    db *sql.DB
+}
+
+func NewMySQLAdapter() *MySQLAdapter {
+    return &MySQLAdapter{}
+}
+
+func (a *MySQLAdapter) Connect(ctx context.Context, dsn string) error {
+    db, err := sql.Open("mysql", dsn)
+    if err != nil {
+        return fmt.Errorf("mysql open: %w", err)
+    }
+    if err := db.PingContext(ctx); err != nil {
+        return fmt.Errorf("mysql ping: %w", err)
+    }
+    a.db = db
+    return nil
+}
+
+func (a *MySQLAdapter) Close() error {
+    if a.db != nil {
+        return a.db.Close()
+    }
+    return nil
+}
+
+func (a *MySQLAdapter) GetSlowQueries(ctx context.Context, opts QueryOpts) ([]models.SlowQuery, error) {
+    // Query performance_schema.events_statements_summary_by_digest
+    // Map columns to models.SlowQuery fields
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetExplainPlan(ctx context.Context, query string, opts QueryOpts) (*models.ExplainPlan, error) {
+    // Use EXPLAIN FORMAT=JSON ...
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetIndexStats(ctx context.Context) ([]models.IndexStat, error) {
+    // Query information_schema.statistics + sys.schema_index_statistics
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetTableStats(ctx context.Context) ([]models.TableStat, error) {
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error) {
+    return nil, fmt.Errorf("not yet implemented")
+}
+
+func (a *MySQLAdapter) GetDatabaseStats(ctx context.Context) (*models.DatabaseStats, error) {
+    return nil, fmt.Errorf("not yet implemented")
+}
+```
+
+### 3. Register in the factory
+
+Edit `internal/adapter/adapter.go`, add the `"mysql"` case:
+
+```go
+func NewAdapter(dbType string) (DBAnalyzer, error) {
+    switch dbType {
+    case "postgres":
+        return NewPostgresAdapter(), nil
+    case "mysql":
+        return NewMySQLAdapter(), nil
+    default:
+        return nil, fmt.Errorf("unsupported db type: %s", dbType)
+    }
+}
+```
+
+### 4. Update the frontend connection form
+
+In `apps/web/src/components/connections/`, add `"mysql"` to the `db_type` select options so users can choose it when creating a connection.
+
+## Testing Your Adapter
+
+Write tests in `internal/adapter/mysql_test.go`. Integration tests require a real MySQL instance — use `testcontainers-go` or a Docker Compose service:
+
+```go
+func TestMySQLAdapter_Connect(t *testing.T) {
+    dsn := os.Getenv("TEST_MYSQL_DSN")
+    if dsn == "" {
+        t.Skip("TEST_MYSQL_DSN not set")
+    }
+    a := NewMySQLAdapter()
+    err := a.Connect(context.Background(), dsn)
+    require.NoError(t, err)
+    defer a.Close()
+}
+```
+
+Run with:
+
+```bash
+TEST_MYSQL_DSN="user:password@tcp(localhost:3306)/testdb" go test ./internal/adapter/ -v -run TestMySQL
+```
+
+## PR Checklist
+
+Before opening a pull request for a new adapter:
+
+- [ ] All 8 interface methods implemented (no permanent `fmt.Errorf("not yet implemented")` stubs)
+- [ ] Unit tests cover `Connect`, `Close`, and at least `GetSlowQueries`
+- [ ] Integration test with a real database instance (skipped when env var absent)
+- [ ] Factory case added in `NewAdapter`
+- [ ] Frontend `db_type` option added
+- [ ] Docs page updated or added under `apps/docs/`

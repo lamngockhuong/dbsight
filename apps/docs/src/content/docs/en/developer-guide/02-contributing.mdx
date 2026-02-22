@@ -1,0 +1,136 @@
+---
+title: "Contributing"
+description: "How to set up a development environment and contribute to DBSight"
+---
+
+Contributions are welcome — bug fixes, new database adapters, UI improvements, and documentation are all appreciated. This page covers everything needed to go from a fresh clone to a running dev environment.
+
+## Prerequisites
+
+| Tool | Minimum version | Notes |
+|---|---|---|
+| Go | 1.22 | `go version` to check |
+| Node.js | 20 | `node --version` |
+| pnpm | 9 | `npm i -g pnpm` or `corepack enable` |
+| PostgreSQL | 14 | Must have `pg_stat_statements` enabled |
+| Docker + Compose | any recent | Optional — simplifies the metadata DB setup |
+
+## Clone and Install
+
+```bash
+git clone https://github.com/lamngockhuong/dbsight.git
+cd dbsight
+
+# Install frontend dependencies (pnpm workspaces)
+pnpm install
+```
+
+The monorepo uses pnpm workspaces with two apps:
+
+- `apps/web` — React + TypeScript SPA (Vite, shadcn/ui, TanStack Table)
+- `apps/docs` — Documentation site
+
+## Development Workflow
+
+### 1. Start the metadata database
+
+```bash
+# Spin up a local PostgreSQL instance with pg_stat_statements pre-configured
+docker-compose up -d postgres
+```
+
+If you prefer a local PostgreSQL install, ensure `pg_stat_statements` is in `shared_preload_libraries` and create a database manually.
+
+### 2. Set environment variables
+
+```bash
+cp .env.example .env   # if it exists, otherwise create manually
+```
+
+Minimum `.env` for development:
+
+```bash
+DATABASE_URL=postgres://dbsight:secret@localhost:5499/dbsight?sslmode=disable
+ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000001
+```
+
+`ENCRYPTION_KEY` must be exactly 64 hex characters. The value above is safe for local dev only — never use it in production.
+
+### 3. Run migrations
+
+```bash
+go run . migrate
+```
+
+### 4. Start the API server
+
+```bash
+go run . serve
+```
+
+The server listens on `http://localhost:42198`.
+
+### 5. Start the frontend dev server
+
+In a separate terminal:
+
+```bash
+pnpm --filter web dev
+```
+
+Vite proxies `/api` requests to `:42198`. Open `http://localhost:5173` for the hot-reloading frontend.
+
+## Running Tests
+
+```bash
+# Go unit tests
+go test ./internal/...
+
+# Go static analysis
+go vet ./internal/...
+
+# Frontend lint + format check (Biome)
+pnpm --filter web lint
+
+# Frontend auto-fix
+pnpm --filter web lint:fix
+```
+
+Run a single test file:
+
+```bash
+go test ./internal/crypto/ -v -run TestEncryptDecrypt
+```
+
+## Code Style
+
+**Go:** Follow standard Go conventions. Run `go vet` before committing. No external linter is enforced, but idiomatic Go is expected — short variable names in small scopes, errors returned not panicked, context threaded through.
+
+**TypeScript / React:** [Biome](https://biomejs.dev/) handles both linting and formatting. Run `pnpm --filter web lint:fix` to auto-fix most issues before opening a PR.
+
+## Pull Request Guidelines
+
+1. Fork the repo and create a branch: `git checkout -b feat/mysql-adapter`
+2. Keep commits focused — one logical change per commit
+3. Add or update tests for any changed behaviour
+4. Run `go test ./internal/...` and `pnpm --filter web lint` — both must pass
+5. Write a clear PR description: what changed, why, and how to test it
+6. For new database adapters, follow the [Extending Adapters](/en/developer-guide/04-extending-adapters) guide
+
+## Project Structure (Monorepo)
+
+```
+dbsight/
+├── apps/
+│   ├── web/          — React SPA (pnpm workspace: "web")
+│   └── docs/         — Documentation site
+├── internal/         — Go packages (not importable externally)
+├── migrations/       — Embedded SQL migration files
+├── main.go           — Entry point
+├── Makefile          — build / test shortcuts
+├── Dockerfile        — Multi-stage build
+├── docker-compose.yml
+└── pnpm-workspace.yaml
+```
+
+**Next:** [API Reference](/en/developer-guide/03-api-reference) — full endpoint documentation.

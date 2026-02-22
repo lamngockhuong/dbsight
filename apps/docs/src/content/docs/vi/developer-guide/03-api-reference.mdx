@@ -1,0 +1,315 @@
+---
+title: "Tài liệu tham chiếu API"
+description: "Tài liệu REST API đầy đủ cho tất cả các endpoint của DBSight"
+---
+
+Tất cả các endpoint được phục vụ từ cùng cổng với giao diện người dùng (mặc định `42198`). API sử dụng JSON qua HTTP — không có xác thực trong phiên bản MVP hiện tại.
+
+URL cơ sở: `http://localhost:42198`
+
+---
+
+## Sức khỏe
+
+### GET /healthz
+
+Trả về trạng thái server và cơ sở dữ liệu. Được dùng bởi Docker health check và các hệ thống giám sát.
+
+**Phản hồi 200**
+
+```json
+{ "status": "ok", "db": "ok" }
+```
+
+**Phản hồi 503** — khi metadata DB không thể truy cập:
+
+```json
+{ "status": "ok", "db": "error" }
+```
+
+---
+
+## Kết nối
+
+### GET /api/connections
+
+Liệt kê tất cả các kết nối đã đăng ký.
+
+**Phản hồi 200**
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Production DB",
+    "db_type": "postgres",
+    "created_at": "2024-01-15T10:00:00Z",
+    "updated_at": "2024-01-15T10:00:00Z"
+  }
+]
+```
+
+Lưu ý: `encrypted_dsn` không bao giờ được trả về bởi bất kỳ endpoint nào.
+
+---
+
+### POST /api/connections
+
+Tạo một kết nối mới. DSN được mã hóa bằng AES-256-GCM trước khi lưu trữ.
+
+**Nội dung yêu cầu**
+
+```json
+{
+  "name": "Production DB",
+  "db_type": "postgres",
+  "dsn": "postgres://user:password@db.example.com:5432/mydb?sslmode=require"
+}
+```
+
+**Phản hồi 201**
+
+```json
+{
+  "id": 1,
+  "name": "Production DB",
+  "db_type": "postgres",
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-15T10:00:00Z"
+}
+```
+
+---
+
+### GET /api/connections/\{id\}
+
+Lấy một kết nối theo ID.
+
+**Phản hồi 200** — cùng cấu trúc với mục trong danh sách ở trên.
+
+**Phản hồi 404** — kết nối không tìm thấy.
+
+---
+
+### PUT /api/connections/\{id\}
+
+Cập nhật tên, db_type hoặc DSN. Tất cả các trường đều tùy chọn — các trường bị bỏ qua sẽ không thay đổi.
+
+**Nội dung yêu cầu**
+
+```json
+{
+  "name": "Production DB (updated)",
+  "dsn": "postgres://user:newpassword@db.example.com:5432/mydb?sslmode=require"
+}
+```
+
+**Phản hồi 200** — đối tượng kết nối đã cập nhật.
+
+---
+
+### DELETE /api/connections/\{id\}
+
+Xóa một kết nối và tất cả các Snapshot liên quan.
+
+**Phản hồi 204** — không có nội dung.
+
+---
+
+### POST /api/connections/\{id\}/test
+
+Kiểm tra kết nối bằng DSN đã lưu. Không sửa đổi bất kỳ dữ liệu nào.
+
+**Phản hồi 200**
+
+```json
+{ "ok": true }
+```
+
+**Phản hồi 200** (thất bại — connection refused, thông tin xác thực sai, v.v.)
+
+```json
+{ "ok": false, "error": "dial tcp: connection refused" }
+```
+
+---
+
+## Truy vấn
+
+### GET /api/connections/\{id\}/queries
+
+Trả về Snapshot mới nhất với các Delta trên từng truy vấn so với Snapshot trước đó.
+
+**Phản hồi 200**
+
+```json
+{
+  "connection_id": 1,
+  "captured_at": "2024-01-15T10:30:00Z",
+  "queries": [
+    {
+      "query_id": "abc123",
+      "query": "SELECT * FROM orders WHERE user_id = $1",
+      "calls": 4200,
+      "total_exec_ms": 8400.5,
+      "mean_exec_ms": 2.0,
+      "rows": 12600,
+      "snapshot_at": "2024-01-15T10:30:00Z",
+      "calls_delta": 42,
+      "total_exec_delta_ms": 84.0,
+      "mean_exec_delta_ms": 0.1,
+      "period_secs": 30
+    }
+  ]
+}
+```
+
+---
+
+### GET /api/connections/\{id\}/queries/stream
+
+Luồng Server-Sent Events (SSE). Server đẩy một sự kiện mới mỗi khi Worker hoàn thành một chu kỳ thu thập cho kết nối này.
+
+**Phản hồi** — `Content-Type: text/event-stream`
+
+Mỗi sự kiện là một đối tượng JSON có cùng cấu trúc với phản hồi `/queries`, được tiền tố bằng `data: `.
+
+Hook `use-sse.ts` của frontend sử dụng endpoint này với tự động kết nối lại.
+
+---
+
+### GET /api/connections/\{id\}/queries/history
+
+Trả về tất cả các Snapshot đã lưu cho kết nối, sắp xếp theo thời gian chụp giảm dần.
+
+**Tham số truy vấn**
+
+| Tham số  | Kiểu    | Mặc định | Mô tả                    |
+|----------|---------|----------|--------------------------|
+| `limit`  | integer | 50       | Số Snapshot tối đa trả về |
+| `offset` | integer | 0        | Offset phân trang         |
+
+**Phản hồi 200**
+
+```json
+[
+  {
+    "id": 10,
+    "connection_id": 1,
+    "queries": [ /* mảng SlowQuery */ ],
+    "captured_at": "2024-01-15T10:30:00Z"
+  }
+]
+```
+
+---
+
+### POST /api/connections/\{id\}/explain
+
+Chạy `EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS)` trên một truy vấn đối với cơ sở dữ liệu đích. Được thực thi trong giao dịch `SET TRANSACTION READ ONLY` để đảm bảo an toàn.
+
+**Nội dung yêu cầu**
+
+```json
+{
+  "query": "SELECT * FROM orders WHERE user_id = $1",
+  "analyze": true
+}
+```
+
+**Phản hồi 200**
+
+```json
+{
+  "query": "SELECT * FROM orders WHERE user_id = $1",
+  "plan": [ /* JSON EXPLAIN PostgreSQL thô */ ]
+}
+```
+
+---
+
+## Chỉ mục
+
+### GET /api/connections/\{id\}/indexes
+
+Trả về phân tích chỉ mục đầy đủ cho cơ sở dữ liệu đích: các chỉ mục không được sử dụng, bảng có áp lực quét tuần tự, chỉ mục trùng lặp và các khuyến nghị có thể thực hiện.
+
+**Phản hồi 200**
+
+```json
+{
+  "unused_indexes": [
+    {
+      "schema_name": "public",
+      "table_name": "orders",
+      "index_name": "idx_orders_old",
+      "index_scans": 0,
+      "tup_read": 0,
+      "tup_fetch": 0,
+      "index_size_bytes": 8192,
+      "is_unused": true
+    }
+  ],
+  "missing_candidates": [
+    {
+      "schema_name": "public",
+      "table_name": "events",
+      "seq_scans": 18400,
+      "seq_tup_read": 92000000,
+      "n_live_tup": 5000000,
+      "table_size_bytes": 1073741824
+    }
+  ],
+  "duplicate_indexes": [
+    {
+      "table_name": "orders",
+      "index1": "idx_orders_user",
+      "index2": "idx_orders_user_id",
+      "index_def": "CREATE INDEX ... ON orders (user_id)"
+    }
+  ],
+  "recommendations": [
+    {
+      "type": "unused_index",
+      "schema_name": "public",
+      "table_name": "orders",
+      "index_name": "idx_orders_old",
+      "description": "Index has never been used — consider dropping it",
+      "sql": "DROP INDEX CONCURRENTLY idx_orders_old;",
+      "severity": "warning"
+    }
+  ],
+  "captured_at": "2024-01-15T10:30:00Z"
+}
+```
+
+---
+
+## Paste
+
+### POST /api/paste/queries
+
+Phân tích một đoạn văn bản slow query log (đầu ra `log_min_duration_statement` của PostgreSQL) và trả về dữ liệu truy vấn có cấu trúc. Giới hạn nội dung yêu cầu là 10 MB.
+
+**Nội dung yêu cầu** — `Content-Type: text/plain` hoặc `application/json`
+
+```json
+{
+  "text": "2024-01-15 10:00:01 UTC [1234]: LOG:  duration: 1523.456 ms  statement: SELECT ..."
+}
+```
+
+**Phản hồi 200**
+
+```json
+{
+  "queries": [
+    {
+      "query": "SELECT ...",
+      "duration_ms": 1523.456,
+      "logged_at": "2024-01-15T10:00:01Z"
+    }
+  ],
+  "count": 1
+}
+```

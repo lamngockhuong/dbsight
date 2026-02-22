@@ -1,0 +1,74 @@
+---
+title: "Cấu hình"
+description: "Biến môi trường và các tùy chọn cấu hình cho DBSight"
+---
+
+DBSight được cấu hình hoàn toàn thông qua biến môi trường. Không có file cấu hình nào cần quản lý — hãy đặt các biến trong shell, file `.env`, hoặc nền tảng điều phối container của bạn.
+
+## Biến Môi trường
+
+| Biến | Mặc định | Bắt buộc | Mô tả |
+|---|---|---|---|
+| `PORT` | `42198` | Không | Cổng HTTP server |
+| `DATABASE_URL` | — | Có | Chuỗi kết nối PostgreSQL cho cơ sở dữ liệu metadata của DBSight |
+| `ENCRYPTION_KEY` | — | Có | 64 ký tự hex (32 byte) cho mã hóa DSN bằng AES-256-GCM |
+| `WORKER_INTERVAL_SECS` | `30` | Không | Tần suất (tính bằng giây) Worker nền thu thập metrics từ các cơ sở dữ liệu được theo dõi |
+
+## Khóa Mã hóa
+
+Khóa mã hóa bảo vệ các DSN cơ sở dữ liệu được lưu trữ khi ở trạng thái nghỉ. Tạo một khóa bằng lệnh:
+
+```bash
+openssl rand -hex 32
+```
+
+Đầu ra là chính xác 64 ký tự hex đại diện cho 32 byte — kích thước khóa yêu cầu cho AES-256-GCM. DBSight sẽ từ chối khởi động nếu khóa bị thiếu hoặc có độ dài sai.
+
+**Quan trọng:** Lưu trữ khóa này an toàn (ví dụ: secrets manager hoặc vault). Nếu bạn mất nó, các DSN đã mã hóa hiện có không thể khôi phục được. Việc thay thế khóa yêu cầu nhập lại tất cả các kết nối.
+
+## DATABASE_URL
+
+Chuỗi kết nối này trỏ đến cơ sở dữ liệu metadata của chính DBSight — không phải các cơ sở dữ liệu bạn muốn theo dõi. DBSight lưu trữ bản ghi kết nối và các snapshot truy vấn tại đây.
+
+```bash
+# Phát triển cục bộ
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/dbsight_meta?sslmode=disable"
+
+# Từ xa với SSL
+DATABASE_URL="postgresql://dbsight:secret@db.example.com:5432/dbsight_meta?sslmode=require"
+```
+
+Chạy `./dbsight migrate` một lần để khởi tạo schema trước khi khởi động server.
+
+## Chu kỳ Worker
+
+`WORKER_INTERVAL_SECS` kiểm soát tần suất Worker nền polling từng kết nối được theo dõi để lấy thống kê truy vấn mới.
+
+```bash
+# Poll mỗi 60 giây thay vì mặc định 30
+WORKER_INTERVAL_SECS=60
+```
+
+Giá trị thấp hơn cho phép theo dõi Delta chi tiết hơn nhưng tăng tải trên các cơ sở dữ liệu được theo dõi. Đối với môi trường production, khoảng `30`–`60` giây là hợp lý.
+
+## File .env
+
+Đặt file `.env` ở thư mục gốc dự án và DBSight sẽ tự động tải nó khi khởi động:
+
+```bash
+# .env
+PORT=42198
+DATABASE_URL=postgresql://user:password@localhost:5432/dbsight_meta
+ENCRYPTION_KEY=a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2
+WORKER_INTERVAL_SECS=30
+```
+
+Không commit các file `.env` chứa thông tin xác thực thực tế lên version control.
+
+## Lưu ý Bảo mật
+
+- Các DSN của cơ sở dữ liệu được theo dõi được mã hóa bằng AES-256-GCM trước khi ghi vào cơ sở dữ liệu metadata.
+- Trường `EncryptedDSN` không bao giờ được đưa vào phản hồi API (tag `json:"-"`).
+- DBSight được thiết kế như một công cụ chỉ dùng trên localhost, không có lớp xác thực trong bản phát hành hiện tại. Không expose cổng `42198` cho các mạng không tin cậy.
+
+**Tiếp theo:** [Quản lý Kết nối](/vi/user-guide/01-connections) — thêm các cơ sở dữ liệu cần theo dõi.

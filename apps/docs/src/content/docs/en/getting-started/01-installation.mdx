@@ -1,0 +1,76 @@
+---
+title: "Installation"
+description: "Install DBSight via Docker, binary download, or from source"
+---
+
+DBSight ships as a single binary that serves the API, background worker, and React frontend together. Pick the method that suits your environment.
+
+## Prerequisites
+
+Depending on your installation method:
+
+- **Docker path**: Docker and Docker Compose
+- **Binary / source path**: Go 1.22+, Node 20+, pnpm
+- **Monitored database**: PostgreSQL with the `pg_stat_statements` extension enabled
+
+## Docker Compose (Recommended)
+
+The fastest way to get running. The included `docker-compose.yml` spins up both DBSight and a PostgreSQL instance with `pg_stat_statements` preloaded.
+
+```bash
+git clone https://github.com/lamngockhuong/dbsight.git
+cd dbsight
+docker-compose up -d
+```
+
+DBSight is available at **http://localhost:42198**.
+
+The bundled PostgreSQL instance is ready for monitoring out of the box. To monitor an external database, add a connection after the UI loads.
+
+## Download Binary
+
+Download a pre-built release from the [GitHub Releases](https://github.com/lamngockhuong/dbsight/releases) page.
+
+```bash
+# Example for Linux amd64 — replace version and platform as needed
+curl -L https://github.com/lamngockhuong/dbsight/releases/latest/download/dbsight-linux-amd64 -o dbsight
+chmod +x dbsight
+
+# Set required environment variables
+export DATABASE_URL="postgresql://user:password@localhost:5432/dbsight_meta"
+export ENCRYPTION_KEY="$(openssl rand -hex 32)"
+
+# Run migrations then start the server
+./dbsight migrate
+./dbsight serve
+```
+
+## Build from Source
+
+Requires Go 1.22+ and Node 20+ with pnpm.
+
+```bash
+git clone https://github.com/lamngockhuong/dbsight.git
+cd dbsight
+
+# Build frontend then Go binary
+make build
+
+# Binary is placed at bin/dbsight
+./bin/dbsight migrate
+./bin/dbsight serve
+```
+
+`make build` runs `pnpm --filter web build` first, then compiles the Go binary with the React assets embedded.
+
+## Verify Installation
+
+Open your browser at **http://localhost:42198**. You should see the DBSight dashboard with an empty connections list.
+
+If the page does not load, check that:
+
+- Port `42198` is not in use by another process
+- `DATABASE_URL` is reachable and migrations have run
+- `ENCRYPTION_KEY` is set to exactly 64 hex characters
+
+**Next:** [Quick Start](/en/getting-started/02-quick-start) — add your first connection and start analyzing queries.

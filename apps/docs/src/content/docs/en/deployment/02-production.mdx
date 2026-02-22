@@ -1,0 +1,212 @@
+---
+title: "Production Deployment"
+description: "Deploy DBSight to production with systemd, reverse proxy, and TLS"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="No authentication in MVP">
+DBSight has no built-in login. **Restrict access via firewall or VPN before exposing it to any network.** Never bind port 42198 to a public interface without a protected reverse proxy in front.
+</Aside>
+
+This guide covers a binary deployment on a Linux server with systemd, nginx, and TLS via Certbot.
+
+## Prerequisites
+
+- Linux server (Ubuntu 22.04+ or similar)
+- PostgreSQL 14+ accessible from the server (can be managed, e.g. RDS, or self-hosted)
+- `pg_stat_statements` enabled on target databases you want to monitor
+- A domain name pointing to the server (for TLS)
+- nginx installed: `apt install nginx`
+- Certbot installed: `apt install certbot python3-certbot-nginx`
+
+## 1. Create the Metadata Database
+
+DBSight needs its own PostgreSQL database to store connections and snapshots. This is separate from the databases you monitor.
+
+```sql
+CREATE USER dbsight WITH PASSWORD 'strong-random-password';
+CREATE DATABASE dbsight_meta OWNER dbsight;
+```
+
+## 2. Install the Binary
+
+```bash
+# Download latest release (replace version and arch as needed)
+curl -L https://github.com/lamngockhuong/dbsight/releases/latest/download/dbsight-linux-amd64 \
+  -o /usr/local/bin/dbsight
+chmod +x /usr/local/bin/dbsight
+
+# Verify
+dbsight --version
+```
+
+## 3. Configure Environment Variables
+
+Store secrets in a file readable only by the service user:
+
+```bash
+useradd --system --no-create-home --shell /usr/sbin/nologin dbsight
+install -d -o dbsight -g dbsight -m 750 /etc/dbsight
+```
+
+Create `/etc/dbsight/env`:
+
+```bash
+DATABASE_URL=postgres://dbsight:strong-random-password@localhost:5432/dbsight_meta?sslmode=require
+ENCRYPTION_KEY=replace-with-output-of-openssl-rand-hex-32-padded-to-64-chars00
+PORT=42198
+WORKER_INTERVAL_SECS=30
+```
+
+```bash
+chown dbsight:dbsight /etc/dbsight/env
+chmod 600 /etc/dbsight/env
+```
+
+Generate the encryption key:
+
+```bash
+openssl rand -hex 32
+```
+
+**Store the key securely** — losing it means losing access to all stored DSNs.
+
+## 4. Run Migrations
+
+```bash
+sudo -u dbsight env $(cat /etc/dbsight/env | xargs) dbsight migrate
+```
+
+## 5. systemd Service
+
+Create `/etc/systemd/system/dbsight.service`:
+
+```ini
+[Unit]
+Description=DBSight database performance analyzer
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dbsight
+Group=dbsight
+EnvironmentFile=/etc/dbsight/env
+ExecStart=/usr/local/bin/dbsight serve
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dbsight
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable --now dbsight
+systemctl status dbsight
+```
+
+## 6. Reverse Proxy with nginx
+
+DBSight listens on `127.0.0.1:42198`. Expose it through nginx so TLS terminates at the proxy.
+
+Create `/etc/nginx/sites-available/dbsight`:
+
+```nginx
+server {
+    listen 80;
+    server_name dbsight.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name dbsight.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/dbsight.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dbsight.example.com/privkey.pem;
+
+    # SSE requires buffering off
+    proxy_buffering off;
+    proxy_cache off;
+
+    location / {
+        proxy_pass         http://127.0.0.1:42198;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   Connection '';
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+```bash
+ln -s /etc/nginx/sites-available/dbsight /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+```
+
+## 7. TLS with Certbot
+
+```bash
+certbot --nginx -d dbsight.example.com
+```
+
+Certbot edits the nginx config and sets up automatic renewal via a systemd timer.
+
+Alternatively, use **Caddy** for automatic HTTPS with zero config:
+
+```
+dbsight.example.com {
+    reverse_proxy localhost:42198
+}
+```
+
+## 8. Firewall
+
+Allow only HTTPS inbound. Never expose port 42198 directly:
+
+```bash
+ufw allow 22/tcp   # SSH
+ufw allow 80/tcp   # HTTP (redirect to HTTPS)
+ufw allow 443/tcp  # HTTPS
+ufw deny 42198/tcp # Block direct access
+ufw enable
+```
+
+For team use, restrict by source IP or put DBSight behind a VPN (WireGuard, Tailscale, etc.).
+
+## 9. Monitoring
+
+Poll the health endpoint from your monitoring system (Prometheus blackbox, UptimeRobot, etc.):
+
+```bash
+curl -sf http://localhost:42198/healthz
+# {"status":"ok","db":"ok"}
+```
+
+A `db` value of `"error"` means DBSight cannot reach its metadata database — check `DATABASE_URL` and PostgreSQL connectivity.
+
+## Upgrading
+
+```bash
+# Download new binary
+curl -L https://github.com/lamngockhuong/dbsight/releases/latest/download/dbsight-linux-amd64 \
+  -o /usr/local/bin/dbsight.new
+chmod +x /usr/local/bin/dbsight.new
+
+# Run migrations first (idempotent — safe to re-run)
+sudo -u dbsight env $(cat /etc/dbsight/env | xargs) /usr/local/bin/dbsight.new migrate
+
+# Swap binary and restart
+mv /usr/local/bin/dbsight.new /usr/local/bin/dbsight
+systemctl restart dbsight
+```

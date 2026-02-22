@@ -1,0 +1,98 @@
+---
+title: EXPLAIN & ANALYZE
+description: Cách DBSight chạy các kế hoạch EXPLAIN an toàn với giao dịch chỉ đọc
+---
+
+`EXPLAIN` hiển thị kế hoạch thực thi truy vấn của PostgreSQL — chuỗi các thao tác mà trình lập kế hoạch đã chọn để đáp ứng một truy vấn. `EXPLAIN ANALYZE` thực sự thực thi truy vấn và thêm thời gian thực tế cùng số lượng hàng thực bên cạnh các ước tính.
+
+DBSight cung cấp cả hai chế độ thông qua ngăn kéo Chi tiết Truy vấn và bảng EXPLAIN chuyên dụng.
+
+## Cơ chế Bảo mật
+
+Chạy các câu lệnh `EXPLAIN ANALYZE` tùy ý tiềm ẩn rủi ro: một truy vấn ghi độc hại hoặc vô tình có thể làm thay đổi dữ liệu. DBSight giảm thiểu rủi ro này bằng cách bọc mỗi EXPLAIN trong một giao dịch chỉ đọc luôn được rollback.
+
+Nguồn: `internal/adapter/explain.go`
+
+```sql
+BEGIN;
+SET TRANSACTION READ ONLY;
+EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) <query>;
+ROLLBACK;
+```
+
+Lệnh `SET TRANSACTION READ ONLY` khiến PostgreSQL từ chối mọi thao tác sửa đổi dữ liệu trong giao dịch. Lệnh `ROLLBACK` tường minh (thông qua `defer tx.Rollback`) đảm bảo không có thay đổi nào được lưu lại ngay cả khi `READ ONLY` bị bỏ qua bằng cách nào đó.
+
+## Hai Chế độ Thực thi
+
+### Chế độ chỉ ước tính (không có ANALYZE)
+
+Được sử dụng khi `AnalyzeMode = false`. Trả về ước tính chi phí của trình lập kế hoạch mà không thực thi truy vấn. An toàn cho mọi loại truy vấn và không có chi phí thời gian chạy.
+
+```sql
+EXPLAIN (FORMAT JSON) <query>
+```
+
+Sử dụng chế độ này khi:
+- Truy vấn tốn kém và bạn chỉ cần cấu trúc kế hoạch
+- Truy vấn có hiệu ứng phụ ghi mà bạn muốn tránh thực thi
+- Bạn muốn kết quả ngay lập tức mà không cần chờ thực thi
+
+### Chế độ phân tích đầy đủ
+
+Được sử dụng khi `AnalyzeMode = true`. Thực thi truy vấn trong giao dịch chỉ đọc và trả về số hàng thực tế, số lần lặp và thời gian trên từng nút.
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) <query>
+```
+
+Tùy chọn `BUFFERS` thêm số lần đọc và hit khối dùng chung/cục bộ, cho thấy liệu các nút đang đọc từ bộ nhớ cache hay đĩa.
+
+## Cấu trúc Đầu ra JSON
+
+DBSight yêu cầu `FORMAT JSON` cho tất cả các kế hoạch. Cấu trúc cấp cao nhất là một mảng có một phần tử:
+
+```json
+[
+  {
+    "Plan": {
+      "Node Type": "Hash Join",
+      "Startup Cost": 0.00,
+      "Total Cost": 1234.56,
+      "Plan Rows": 500,
+      "Actual Rows": 487,
+      "Actual Loops": 1,
+      "Plans": [ ... ]
+    }
+  }
+]
+```
+
+Mỗi nút trong `Plans` theo cùng một cấu trúc đệ quy.
+
+## Các Loại Nút Kế hoạch Phổ biến
+
+| Loại nút           | Mô tả                                                                |
+|--------------------|----------------------------------------------------------------------|
+| `Seq Scan`         | Quét toàn bộ bảng — đọc mọi hàng. Bình thường với bảng nhỏ hoặc tập kết quả lớn; tốn kém trên bảng lớn không có mệnh đề `WHERE`. |
+| `Index Scan`       | Sử dụng chỉ mục để định vị hàng, sau đó lấy từ heap. Tốt cho các truy vấn có tính chọn lọc cao. |
+| `Index Only Scan`  | Đáp ứng truy vấn hoàn toàn từ chỉ mục, không truy cập heap. Đường đọc hiệu quả nhất. |
+| `Bitmap Heap Scan` | Sử dụng bitmap từ một hoặc nhiều chỉ mục, sau đó lấy các trang heap theo thứ tự. Tốt cho tính chọn lọc vừa phải. |
+| `Hash Join`        | Xây dựng bảng hash từ quan hệ nhỏ hơn rồi dò với quan hệ lớn hơn. Phổ biến cho equi-join trên dữ liệu chưa sắp xếp. |
+| `Nested Loop`      | Với mỗi hàng trong tập ngoài, quét tập trong. Hiệu quả khi phía trong sử dụng chỉ mục. |
+| `Merge Join`       | Nối hai đầu vào đã sắp xếp trước. Hiệu quả khi cả hai phía đã được sắp xếp. |
+| `Sort`             | Bước sắp xếp tường minh. Chú ý `Sort Method: external merge` biểu thị tràn ra đĩa. |
+| `Aggregate`        | Tính toán các hàm tổng hợp (COUNT, SUM, v.v.). |
+| `Limit`            | Cắt bớt đầu ra còn N hàng. |
+
+## Những Điều Cần Chú ý
+
+- **`Rows Removed by Filter` cao** trên `Seq Scan` — một chỉ mục trên cột lọc sẽ giúp ích.
+- **Số hàng ước tính vs thực tế chênh lệch 10 lần trở lên** — thống kê cũ; chạy `ANALYZE <table>`.
+- **`Sort Method: external merge`** — sắp xếp tràn ra đĩa; tăng `work_mem`.
+- **`Shared Read Blocks` cao hơn nhiều so với `Shared Hit Blocks`** — dữ liệu không có trong cache; bình thường với truy vấn lạnh, cần điều tra nếu liên tục xảy ra.
+- **Nested Loop với nhiều vòng lặp và không có chỉ mục ở phía trong** — cân nhắc thêm chỉ mục hoặc viết lại thành Hash Join.
+
+## Xem thêm
+
+- [Kế hoạch EXPLAIN](/vi/user-guide/explain-plans) — sử dụng bảng EXPLAIN trong giao diện người dùng
+- [Truy vấn chậm](/vi/user-guide/slow-queries) — tìm các truy vấn cần phân tích

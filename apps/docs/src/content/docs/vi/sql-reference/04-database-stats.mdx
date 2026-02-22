@@ -1,0 +1,102 @@
+---
+title: Thống kê Cơ sở dữ liệu
+description: Các truy vấn SQL để lấy kích thước cơ sở dữ liệu, kết nối và tỷ lệ cache hit
+---
+
+DBSight thu thập một Snapshot số liệu cấp cao mỗi lần Worker chạy cho mỗi cơ sở dữ liệu. Các số liệu này cung cấp dữ liệu cho các thẻ tóm tắt và biểu đồ sparkline ở đầu Bảng điều khiển trực tiếp.
+
+## Truy vấn DBSight Sử Dụng
+
+Nguồn: `internal/adapter/stats.go` — `GetDatabaseStats`
+
+```sql
+SELECT
+    current_database(),
+    pg_database_size(current_database()),
+    (SELECT count(*) FROM pg_stat_activity WHERE state = 'active'),
+    current_setting('max_connections')::int,
+    ROUND(
+        sum(blks_hit)::numeric /
+        NULLIF(sum(blks_hit) + sum(blks_read), 0) * 100, 2
+    )
+FROM pg_stat_database WHERE datname = current_database()
+```
+
+Truy vấn chọn từ `pg_stat_database` được lọc theo cơ sở dữ liệu hiện tại, kết hợp với một subquery tương quan để lấy số kết nối đang hoạt động và một lệnh gọi `current_setting` để lấy giới hạn kết nối đã cấu hình.
+
+## Tài liệu Tham chiếu Số liệu
+
+### Tên Cơ sở dữ liệu
+
+```sql
+current_database()
+```
+
+Trả về tên của cơ sở dữ liệu mà kết nối đang được xác thực. Được dùng làm nhãn hiển thị trong tiêu đề bảng điều khiển.
+
+### Kích thước Cơ sở dữ liệu
+
+```sql
+pg_database_size(current_database())
+```
+
+Trả về tổng kích thước trên đĩa của cơ sở dữ liệu tính bằng byte, bao gồm tất cả các bảng, chỉ mục và dữ liệu TOAST. DBSight định dạng giá trị này thành các đơn vị dễ đọc (KB / MB / GB) để hiển thị.
+
+### Kết nối Đang hoạt động
+
+```sql
+(SELECT count(*) FROM pg_stat_activity WHERE state = 'active')
+```
+
+Đếm các kết nối hiện đang thực thi một truy vấn (`state = 'active'`). Điều này loại trừ các kết nối idle, kết nối idle-in-transaction và các background worker.
+
+| `pg_stat_activity.state` | Ý nghĩa |
+|--------------------------|---------|
+| `active`                 | Đang thực thi một truy vấn ngay lúc này — được đếm ở đây |
+| `idle`                   | Đã kết nối nhưng đang chờ lệnh |
+| `idle in transaction`    | Trong khối BEGIN, hiện không thực thi |
+| `fastpath function call` | Đang thực thi một hàm fast-path |
+
+### Số kết nối Tối đa
+
+```sql
+current_setting('max_connections')::int
+```
+
+Giới hạn kết nối toàn server từ `postgresql.conf`. DBSight hiển thị số kết nối đang hoạt động cùng với giá trị này để bạn có thể thấy dư địa còn lại ngay lập tức.
+
+### Tỷ lệ Cache Hit
+
+```sql
+ROUND(
+    sum(blks_hit)::numeric /
+    NULLIF(sum(blks_hit) + sum(blks_read), 0) * 100, 2
+)
+```
+
+Tỷ lệ phần trăm các lần đọc khối được phục vụ từ bộ nhớ đệm dùng chung của PostgreSQL thay vì từ đĩa. `NULLIF` bảo vệ khỏi chia cho số không trên cơ sở dữ liệu mới chưa có I/O.
+
+| Khoảng     | Trạng thái | Diễn giải                                                                     |
+|------------|------------|-------------------------------------------------------------------------------|
+| >= 99%     | Tốt        | Hầu hết các lần đọc từ bộ nhớ. Dự kiến cho cơ sở dữ liệu được cấu hình tốt và đã khởi động. |
+| 95% – 99%  | Cảnh báo   | Một số lần đọc đĩa đang xảy ra. Có thể chấp nhận được tùy thuộc vào kích thước dataset. |
+| < 95%      | Nghiêm trọng | I/O đĩa đáng kể. Cân nhắc tăng `shared_buffers` hoặc bổ sung RAM.          |
+| `NULL`     | Không áp dụng | Chưa ghi nhận I/O khối — cơ sở dữ liệu vừa khởi động hoặc thống kê đã được reset. |
+
+Tỷ lệ cache hit thấp không phải lúc nào cũng có nghĩa là cấu hình sai. Các cơ sở dữ liệu lớn hơn RAM khả dụng sẽ luôn có một số lần đọc đĩa; điều quan trọng là liệu tỷ lệ có đang giảm theo thời gian hay không.
+
+## Cách DBSight Hiển thị các Số liệu Này
+
+Bốn giá trị ánh xạ trực tiếp đến các thẻ tóm tắt trên Bảng điều khiển trực tiếp:
+
+- **Cơ sở dữ liệu** — nhãn tên trong tiêu đề trang
+- **Kích thước** — thẻ byte đã định dạng (ví dụ: `4.2 GB`)
+- **Kết nối** — `{active} / {max_connections}` với thanh sử dụng
+- **Cache Hit** — tỷ lệ phần trăm với mã màu (xanh lá / hổ phách / đỏ theo các khoảng trên)
+
+Cả bốn giá trị đều làm mới theo mỗi tick SSE cùng với luồng truy vấn chậm, nên bảng điều khiển phản ánh trạng thái trực tiếp của cơ sở dữ liệu mà không cần tải lại trang thủ công.
+
+## Xem thêm
+
+- [Bảng điều khiển trực tiếp](/vi/user-guide/live-dashboard) — xem các số liệu này trong giao diện người dùng
+- [pg_stat_statements](/vi/sql-reference/pg-stat-statements) — thu thập truy vấn chậm chạy trên cùng Worker tick

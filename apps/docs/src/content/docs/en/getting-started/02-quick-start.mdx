@@ -1,0 +1,84 @@
+---
+title: "Quick Start"
+description: "Set up DBSight and analyze your first PostgreSQL database in minutes"
+---
+
+This guide walks from a fresh install to viewing slow queries for your first database connection.
+
+## 1. Generate an Encryption Key
+
+DBSight encrypts stored DSNs with AES-256-GCM. Generate a 32-byte key encoded as 64 hex characters:
+
+```bash
+openssl rand -hex 32
+# Example output: a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2
+```
+
+Keep this value — if you lose it, stored DSNs cannot be decrypted.
+
+## 2. Set Environment Variables
+
+```bash
+export DATABASE_URL="postgresql://user:password@localhost:5432/dbsight_meta"
+export ENCRYPTION_KEY="a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2"
+
+# Optional overrides
+export PORT=42198
+export WORKER_INTERVAL_SECS=30
+```
+
+`DATABASE_URL` points to the database where DBSight stores its own metadata (connections list, snapshots). This is separate from the databases you want to monitor.
+
+You can also place these in a `.env` file at the project root — DBSight loads it automatically on startup.
+
+## 3. Run Migrations
+
+Initialize the metadata schema before starting the server for the first time:
+
+```bash
+./dbsight migrate
+```
+
+This is idempotent — safe to run on every deploy.
+
+## 4. Start the Server
+
+```bash
+./dbsight serve
+```
+
+You should see output similar to:
+
+```
+DBSight listening on :42198
+Worker started, interval=30s
+```
+
+## 5. Open the Dashboard
+
+Navigate to **http://localhost:42198** in your browser. The connections list will be empty.
+
+## 6. Add Your First Connection
+
+1. Click **Add Connection** in the left sidebar.
+2. Enter a descriptive **Name** (e.g. `production-replica`).
+3. Paste your PostgreSQL **DSN**:
+   ```
+   postgresql://user:password@localhost:5432/mydb?sslmode=disable
+   ```
+4. Click **Test Connection** to verify DBSight can reach the database.
+5. Click **Save**.
+
+The connection appears in the sidebar. DBSight's background worker immediately schedules a metrics collection pass.
+
+## 7. View Slow Queries
+
+Click the connection name in the sidebar. The **Slow Queries** table populates within one worker interval (default 30 seconds). Queries are ranked by total execution time descending.
+
+From here you can:
+
+- Click any query row to open the detail drawer
+- Run an **EXPLAIN plan** directly from the detail drawer
+- Check the **Index Analysis** tab for unused or duplicate indexes
+
+**Next:** [Configuration](/en/getting-started/03-configuration) — customize ports, polling intervals, and more.

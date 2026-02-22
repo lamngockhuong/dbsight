@@ -1,0 +1,74 @@
+---
+title: "Index Analysis"
+description: "Analyze index usage, find unused indexes, and detect duplicates"
+---
+
+The Index Analysis tab pulls data from `pg_stat_user_indexes` and `pg_stat_user_tables` to give you a picture of how effectively your indexes are being used — and which ones are costing you write overhead without helping reads.
+
+## Index Usage Stats
+
+Each row in the index table represents one index on one table:
+
+| Column | Description |
+|---|---|
+| **Table** | The table the index belongs to |
+| **Index Name** | Name of the index |
+| **Scans** | Number of index scans initiated |
+| **Tuples Read** | Rows read via this index |
+| **Tuples Fetched** | Rows actually returned to the query (after visibility checks) |
+| **Index Size** | Disk space consumed by the index |
+
+Stats accumulate since the last `pg_stat_reset()` call. Interpret them relative to table age and traffic patterns — a new index on a quiet table will show low scans even if it is well-designed.
+
+## Identifying Unused Indexes
+
+An index with **0 scans** has not been used by the query planner since statistics were last reset. These are candidates for removal.
+
+Before dropping an unused index:
+
+1. Confirm the stats have been accumulating long enough to be representative (at least a few days of normal traffic).
+2. Check whether the index exists for a write-path constraint (unique, primary key, foreign key) — those will show low scans but must not be dropped.
+3. Consider the query workload — seasonal or batch queries may use the index rarely but critically.
+
+To drop a confirmed unused index:
+
+```sql
+DROP INDEX CONCURRENTLY index_name;
+```
+
+Using `CONCURRENTLY` avoids locking the table during removal.
+
+## Duplicate Index Detection
+
+Duplicate indexes share the same column set and order on the same table. They waste disk space and slow down every `INSERT`, `UPDATE`, and `DELETE` because PostgreSQL must maintain all copies.
+
+DBSight flags pairs of indexes where the index definition matches. Review each flagged pair and drop the redundant one.
+
+```sql
+-- Check index definitions before dropping
+SELECT indexname, indexdef FROM pg_indexes
+WHERE tablename = 'my_table';
+```
+
+## Table-Level Stats
+
+Below the index table, DBSight shows per-table statistics drawn from `pg_stat_user_tables`:
+
+| Column | Description |
+|---|---|
+| **Sequential Scans** | Full table scans — high numbers suggest a missing index |
+| **Seq Scan Rows** | Average rows returned per sequential scan |
+| **Live Tuples** | Estimated current row count |
+| **Dead Tuples** | Rows deleted or updated but not yet vacuumed |
+| **Table Size** | Total disk space for the table (heap + toast) |
+| **Last Vacuum** | When autovacuum last processed the table |
+| **Last Analyze** | When statistics were last refreshed |
+
+## Interpreting Results
+
+- **High sequential scans on a large table**: the query pattern lacks a suitable index. Review slow queries hitting this table via the [Slow Query Analysis](/en/user-guide/02-slow-queries) view and consider adding an index on the filtered or joined columns.
+- **Many dead tuples**: autovacuum may be falling behind. Check `autovacuum` settings or run `VACUUM ANALYZE tablename` manually.
+- **Index size larger than table size**: possible index bloat — consider `REINDEX CONCURRENTLY`.
+- **Unused indexes on high-write tables**: removing them reduces write amplification and can improve insert/update throughput noticeably.
+
+**Next:** [Paste Mode](/en/user-guide/05-paste-mode) — analyze logs without a direct connection.

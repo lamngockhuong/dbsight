@@ -1,0 +1,72 @@
+---
+title: "Quản lý Kết nối"
+description: "Thêm, chỉnh sửa, kiểm tra và xóa các kết nối cơ sở dữ liệu PostgreSQL"
+---
+
+Một kết nối cho DBSight biết cơ sở dữ liệu PostgreSQL nào cần theo dõi. Bạn có thể thêm bao nhiêu kết nối tùy ý — mỗi kết nối chạy độc lập thông qua Worker nền.
+
+## Thêm Kết nối
+
+1. Nhấp **Add Connection** trong thanh bên trái.
+2. Nhập **Tên** — đây chỉ là nhãn hiển thị (ví dụ: `prod-replica`, `staging-db`).
+3. Nhập **DSN** (Data Source Name) cho cơ sở dữ liệu đích.
+4. Nhấp **Test Connection** để xác minh kết nối trước khi lưu.
+5. Nhấp **Save**.
+
+Kết nối xuất hiện trong thanh bên ngay lập tức. Worker sẽ lập lịch lần thu thập metrics đầu tiên trong vòng một chu kỳ polling.
+
+## Định dạng DSN
+
+DBSight sử dụng định dạng chuỗi kết nối PostgreSQL tiêu chuẩn:
+
+```
+postgresql://user:password@host:port/dbname?sslmode=disable
+```
+
+### Ví dụ
+
+```bash
+# Cơ sở dữ liệu cục bộ, không có SSL
+postgresql://postgres:postgres@localhost:5432/mydb?sslmode=disable
+
+# Cơ sở dữ liệu từ xa với SSL bắt buộc
+postgresql://appuser:secret@db.example.com:5432/production?sslmode=require
+
+# Từ xa với đường dẫn tìm kiếm schema cụ thể
+postgresql://appuser:secret@db.example.com:5432/production?sslmode=require&search_path=myschema
+```
+
+Sử dụng người dùng cơ sở dữ liệu chỉ đọc khi có thể. DBSight chỉ cần quyền `SELECT` trên `pg_stat_statements`, `pg_stat_user_indexes`, `pg_stat_user_tables` và `pg_database`.
+
+## Kiểm tra Kết nối
+
+Nút **Test Connection** gửi một ping nhẹ đến cơ sở dữ liệu đích bằng DSN được cung cấp. Nó kiểm tra:
+
+- Khả năng tiếp cận mạng
+- Thông tin xác thực hợp lệ
+- `pg_stat_statements` có thể truy cập được
+
+Nếu kiểm tra thất bại, một thông báo lỗi dạng văn bản thuần sẽ được hiển thị. Nguyên nhân thường gặp: sai host/port, thông tin xác thực không đúng, tường lửa chặn kết nối, hoặc `pg_stat_statements` chưa được cài đặt trên máy đích.
+
+## Chỉnh sửa Kết nối
+
+1. Nhấp vào tên kết nối trong thanh bên.
+2. Nhấp biểu tượng **Edit** (bút chì) ở phần header của kết nối.
+3. Cập nhật tên hoặc DSN.
+4. Kiểm tra và lưu.
+
+Chỉnh sửa kết nối không xóa lịch sử đã thu thập.
+
+## Xóa Kết nối
+
+1. Mở kết nối.
+2. Nhấp biểu tượng **Delete** (thùng rác).
+3. Xác nhận việc xóa.
+
+Xóa một kết nối sẽ xóa nó và tất cả các snapshot liên quan khỏi cơ sở dữ liệu metadata. Hành động này không thể hoàn tác.
+
+## Bảo mật
+
+Các DSN được mã hóa bằng **AES-256-GCM** trước khi lưu vào cơ sở dữ liệu metadata. DSN dạng văn bản thuần không bao giờ được ghi ra đĩa hoặc trả về trong bất kỳ phản hồi API nào — trường `EncryptedDSN` mang tag `json:"-"` đảm bảo nó luôn bị bỏ qua khi serialize.
+
+**Tiếp theo:** [Phân tích Truy vấn Chậm](/vi/user-guide/02-slow-queries) — hiểu bảng metrics truy vấn.

@@ -1,0 +1,72 @@
+---
+title: "Managing Connections"
+description: "Add, edit, test, and delete PostgreSQL database connections"
+---
+
+A connection tells DBSight which PostgreSQL database to monitor. You can add as many connections as you need — each one runs independently through the background worker.
+
+## Adding a Connection
+
+1. Click **Add Connection** in the left sidebar.
+2. Enter a **Name** — this is just a display label (e.g. `prod-replica`, `staging-db`).
+3. Enter the **DSN** (Data Source Name) for the target database.
+4. Click **Test Connection** to verify connectivity before saving.
+5. Click **Save**.
+
+The connection appears in the sidebar immediately. The worker schedules its first metrics collection within one polling interval.
+
+## DSN Format
+
+DBSight uses the standard PostgreSQL connection string format:
+
+```
+postgresql://user:password@host:port/dbname?sslmode=disable
+```
+
+### Examples
+
+```bash
+# Local database, no SSL
+postgresql://postgres:postgres@localhost:5432/mydb?sslmode=disable
+
+# Remote database with SSL required
+postgresql://appuser:secret@db.example.com:5432/production?sslmode=require
+
+# Remote with a specific schema search path
+postgresql://appuser:secret@db.example.com:5432/production?sslmode=require&search_path=myschema
+```
+
+Use a read-only database user where possible. DBSight only needs `SELECT` access to `pg_stat_statements`, `pg_stat_user_indexes`, `pg_stat_user_tables`, and `pg_database`.
+
+## Testing a Connection
+
+The **Test Connection** button sends a lightweight ping to the target database using the provided DSN. It checks:
+
+- Network reachability
+- Valid credentials
+- That `pg_stat_statements` is accessible
+
+If the test fails, a plain-text error message is shown. Common causes: wrong host/port, incorrect credentials, firewall blocking the connection, or `pg_stat_statements` not installed on the target.
+
+## Editing a Connection
+
+1. Click the connection name in the sidebar.
+2. Click the **Edit** (pencil) icon in the connection header.
+3. Update the name or DSN.
+4. Test and save.
+
+Editing a connection does not reset its collected history.
+
+## Deleting a Connection
+
+1. Open the connection.
+2. Click the **Delete** (trash) icon.
+3. Confirm the deletion.
+
+Deleting a connection removes it and all associated snapshots from the metadata database. This action is irreversible.
+
+## Security
+
+DSNs are encrypted with **AES-256-GCM** before being stored in the metadata database. The plaintext DSN is never written to disk or returned in any API response — the `EncryptedDSN` field carries a `json:"-"` tag ensuring it is always omitted from serialization.
+
+**Next:** [Slow Query Analysis](/en/user-guide/02-slow-queries) — understand the query metrics table.

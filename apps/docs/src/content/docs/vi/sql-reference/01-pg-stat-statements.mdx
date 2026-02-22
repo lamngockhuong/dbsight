@@ -1,0 +1,83 @@
+---
+title: pg_stat_statements
+description: Cách DBSight thu thập dữ liệu truy vấn chậm từ pg_stat_statements
+---
+
+`pg_stat_statements` là một extension của PostgreSQL theo dõi thống kê thực thi cho mọi câu lệnh SQL được thực thi đối với một cơ sở dữ liệu. DBSight truy vấn view này mỗi lần Worker chạy để tạo snapshot các truy vấn chậm và tính toán các Delta giữa các lần thu thập.
+
+## Kích hoạt pg_stat_statements
+
+Extension này yêu cầu hai bước:
+
+**1. Thêm vào `shared_preload_libraries` trong `postgresql.conf`:**
+
+```ini
+shared_preload_libraries = 'pg_stat_statements'
+```
+
+Khởi động lại PostgreSQL sau khi thay đổi cài đặt này.
+
+**2. Tạo extension trong cơ sở dữ liệu đích:**
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+```
+
+Xác nhận extension đang hoạt động:
+
+```sql
+SELECT * FROM pg_stat_statements LIMIT 1;
+```
+
+Nếu truy vấn trả về lỗi, thư viện chưa được tải khi khởi động.
+
+## Truy vấn DBSight Sử Dụng
+
+Nguồn: `internal/adapter/slow_queries.go`
+
+```sql
+SELECT
+    queryid::text,
+    query,
+    calls,
+    total_exec_time,
+    mean_exec_time,
+    rows
+FROM pg_stat_statements
+WHERE mean_exec_time >= $1
+ORDER BY total_exec_time DESC
+LIMIT $2
+```
+
+### Tham số
+
+| Tham số | Kiểu    | Mặc định | Mô tả                                               |
+|---------|---------|----------|-----------------------------------------------------|
+| `$1`    | float64 | `0`      | Thời gian thực thi trung bình tối thiểu tính bằng mili giây (bộ lọc) |
+| `$2`    | int     | `50`     | Số hàng trả về tối đa                              |
+
+Kết quả được sắp xếp theo `total_exec_time DESC` để các truy vấn tốn kém nhất (theo chi phí tích lũy) xuất hiện đầu tiên.
+
+### Mô tả các cột
+
+| Cột              | Kiểu    | Mô tả                                                     |
+|------------------|---------|-----------------------------------------------------------|
+| `queryid`        | text    | Mã định danh hash duy nhất cho truy vấn đã chuẩn hóa     |
+| `query`          | text    | Văn bản truy vấn đã chuẩn hóa (các giá trị thực được thay bằng `$n`) |
+| `calls`          | bigint  | Tổng số lần truy vấn được thực thi                        |
+| `total_exec_time`| float8  | Tổng thời gian thực thi cộng dồn trên tất cả các lần gọi (ms) |
+| `mean_exec_time` | float8  | Thời gian thực thi trung bình mỗi lần gọi (ms)           |
+| `rows`           | bigint  | Tổng số hàng trả về hoặc bị ảnh hưởng trên tất cả các lần gọi |
+
+## Cách DBSight Sử Dụng Dữ Liệu Này
+
+**Thu thập Snapshot** — Worker nền (mặc định 30 giây) gọi `GetSlowQueries` cho mọi kết nối đang hoạt động. Mỗi tập kết quả được lưu trữ dưới dạng Snapshot có dấu thời gian trong cơ sở dữ liệu metadata của DBSight.
+
+**Theo dõi Delta** — Ở mỗi Snapshot tiếp theo, DBSight tính toán sự khác biệt về `calls`, `total_exec_time` và `rows` giữa Snapshot hiện tại và Snapshot trước đó. Điều này cho thấy sự thay đổi thông lượng truy vấn theo thời gian thay vì tổng số liệu từ trước đến nay.
+
+**Lọc** — Tùy chọn `MinMeanMs` ánh xạ tới `$1`. Đặt giá trị này lớn hơn `0` để loại trừ các truy vấn nhanh khỏi các Snapshot, giảm dung lượng lưu trữ và nhiễu. Cấu hình theo từng kết nối trong giao diện người dùng.
+
+## Xem thêm
+
+- [Truy vấn chậm](/vi/user-guide/slow-queries) — diễn giải dữ liệu Snapshot trong giao diện người dùng
+- [Bảng điều khiển trực tiếp](/vi/user-guide/live-dashboard) — luồng SSE theo thời gian thực của các Delta truy vấn

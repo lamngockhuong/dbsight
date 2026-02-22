@@ -1,0 +1,74 @@
+---
+title: "Phân tích Chỉ mục"
+description: "Phân tích mức độ sử dụng chỉ mục, tìm chỉ mục không dùng và phát hiện trùng lặp"
+---
+
+Tab Phân tích Chỉ mục lấy dữ liệu từ `pg_stat_user_indexes` và `pg_stat_user_tables` để cung cấp cho bạn bức tranh tổng thể về mức độ hiệu quả của các chỉ mục — và những chỉ mục nào đang tốn chi phí ghi mà không hỗ trợ gì cho việc đọc.
+
+## Thống kê Sử dụng Chỉ mục
+
+Mỗi hàng trong bảng chỉ mục đại diện cho một chỉ mục trên một bảng:
+
+| Cột | Mô tả |
+|---|---|
+| **Table** | Bảng mà chỉ mục thuộc về |
+| **Index Name** | Tên của chỉ mục |
+| **Scans** | Số lần quét chỉ mục được khởi tạo |
+| **Tuples Read** | Các hàng được đọc qua chỉ mục này |
+| **Tuples Fetched** | Các hàng thực sự được trả về cho truy vấn (sau kiểm tra visibility) |
+| **Index Size** | Dung lượng đĩa mà chỉ mục chiếm dụng |
+
+Thống kê tích lũy kể từ lần gọi `pg_stat_reset()` cuối cùng. Hãy diễn giải chúng tương đối với tuổi bảng và mô hình traffic — một chỉ mục mới trên bảng ít hoạt động sẽ hiển thị số lần quét thấp ngay cả khi nó được thiết kế tốt.
+
+## Xác định Chỉ mục Không Dùng
+
+Một chỉ mục với **0 lần quét** chưa được query planner sử dụng kể từ khi thống kê được reset lần cuối. Đây là các ứng viên để xóa.
+
+Trước khi xóa một chỉ mục không dùng:
+
+1. Xác nhận thống kê đã tích lũy đủ lâu để có tính đại diện (ít nhất vài ngày traffic bình thường).
+2. Kiểm tra xem chỉ mục có tồn tại vì một ràng buộc write-path (unique, primary key, foreign key) không — những cái đó sẽ hiển thị ít lần quét nhưng không được xóa.
+3. Cân nhắc khối lượng công việc truy vấn — các truy vấn theo mùa hoặc theo lô có thể dùng chỉ mục hiếm nhưng quan trọng.
+
+Để xóa một chỉ mục không dùng đã xác nhận:
+
+```sql
+DROP INDEX CONCURRENTLY index_name;
+```
+
+Dùng `CONCURRENTLY` tránh khóa bảng trong quá trình xóa.
+
+## Phát hiện Chỉ mục Trùng lặp
+
+Các chỉ mục trùng lặp chia sẻ cùng tập cột và thứ tự trên cùng một bảng. Chúng lãng phí dung lượng đĩa và làm chậm mọi lệnh `INSERT`, `UPDATE` và `DELETE` vì PostgreSQL phải duy trì tất cả các bản sao.
+
+DBSight đánh dấu các cặp chỉ mục có định nghĩa chỉ mục trùng khớp. Hãy xem lại từng cặp được đánh dấu và xóa cái thừa.
+
+```sql
+-- Kiểm tra định nghĩa chỉ mục trước khi xóa
+SELECT indexname, indexdef FROM pg_indexes
+WHERE tablename = 'my_table';
+```
+
+## Thống kê Cấp Bảng
+
+Bên dưới bảng chỉ mục, DBSight hiển thị thống kê theo từng bảng được lấy từ `pg_stat_user_tables`:
+
+| Cột | Mô tả |
+|---|---|
+| **Sequential Scans** | Quét toàn bộ bảng — số lượng cao gợi ý thiếu chỉ mục |
+| **Seq Scan Rows** | Số hàng trung bình trả về mỗi lần quét tuần tự |
+| **Live Tuples** | Số hàng hiện tại ước tính |
+| **Dead Tuples** | Các hàng đã xóa hoặc cập nhật nhưng chưa được vacuum |
+| **Table Size** | Tổng dung lượng đĩa cho bảng (heap + toast) |
+| **Last Vacuum** | Lần cuối autovacuum xử lý bảng |
+| **Last Analyze** | Lần cuối thống kê được làm mới |
+
+## Diễn giải Kết quả
+
+- **Quét tuần tự nhiều trên bảng lớn**: mô hình truy vấn thiếu chỉ mục phù hợp. Xem lại các truy vấn chậm đang truy cập bảng này qua view [Phân tích Truy vấn Chậm](/vi/user-guide/02-slow-queries) và cân nhắc thêm chỉ mục trên các cột được lọc hoặc join.
+- **Nhiều dead tuples**: autovacuum có thể đang bị tụt hậu. Kiểm tra cài đặt `autovacuum` hoặc chạy thủ công `VACUUM ANALYZE tablename`.
+- **Kích thước chỉ mục lớn hơn kích thước bảng**: có thể index bloat — cân nhắc `REINDEX CONCURRENTLY`.
+- **Chỉ mục không dùng trên bảng ghi nhiều**: xóa chúng giảm write amplification và có thể cải thiện đáng kể thông lượng insert/update.
+
+**Tiếp theo:** [Chế độ Paste](/vi/user-guide/05-paste-mode) — phân tích log mà không cần kết nối trực tiếp.

@@ -1,0 +1,76 @@
+---
+title: "Kế hoạch EXPLAIN"
+description: "Chạy và phân tích kế hoạch EXPLAIN PostgreSQL để tối ưu hóa truy vấn"
+---
+
+Kế hoạch EXPLAIN cho thấy chính xác cách PostgreSQL dự định (hoặc thực sự đã) thực thi một truy vấn. DBSight cho phép bạn chạy EXPLAIN trực tiếp từ danh sách truy vấn chậm mà không cần rời khỏi bảng điều khiển.
+
+## Cách Chạy EXPLAIN
+
+1. Nhấp vào một hàng truy vấn trong bảng truy vấn chậm để mở **Ngăn kéo Chi tiết Truy vấn**.
+2. Nhấp nút **Explain** ở phần header của ngăn kéo (hoặc dùng liên kết thanh bên).
+3. Chọn chế độ:
+   - **EXPLAIN** — chỉ ước tính, không thực thi truy vấn
+   - **EXPLAIN ANALYZE** — thực thi truy vấn và trả về thời gian thực tế và số hàng thực tế
+4. Kế hoạch JSON được hiển thị trong bảng đầu ra.
+
+## EXPLAIN so với EXPLAIN ANALYZE
+
+| Chế độ | Thực thi Truy vấn | Hiển thị Thời gian Thực tế | An toàn trên Production |
+|---|---|---|---|
+| EXPLAIN | Không | Không | Có |
+| EXPLAIN ANALYZE | Có | Có | Dùng thận trọng |
+
+Dùng **EXPLAIN** để xem nhanh chiến lược của query planner mà không chạm vào dữ liệu. Dùng **EXPLAIN ANALYZE** khi bạn cần số hàng thực tế và thời gian để chẩn đoán lỗi ước tính của kế hoạch — nhưng lưu ý nó thực sự chạy truy vấn.
+
+## Bảo mật
+
+DBSight bọc mọi lần thực thi EXPLAIN trong giao dịch `SET TRANSACTION READ ONLY` và được rollback ngay sau khi kế hoạch được lấy. Điều này ngăn việc sửa đổi dữ liệu ngoài ý muốn ngay cả khi một truy vấn nào đó vượt qua quá trình chuẩn hóa. Các thao tác ghi (`INSERT`, `UPDATE`, `DELETE`) sẽ báo lỗi trong giao dịch chỉ đọc, bảo vệ dữ liệu của bạn.
+
+## Đọc Đầu ra JSON
+
+PostgreSQL trả về kế hoạch dưới dạng cây JSON. Các trường quan trọng cần chú ý:
+
+```json
+{
+  "Plan": {
+    "Node Type": "Hash Join",
+    "Startup Cost": 0.00,
+    "Total Cost": 1234.56,
+    "Plan Rows": 500,
+    "Actual Rows": 12043,
+    "Actual Total Time": 87.4,
+    "Plans": [...]
+  }
+}
+```
+
+| Trường | Ý nghĩa |
+|---|---|
+| `Node Type` | Thao tác PostgreSQL đang thực hiện |
+| `Total Cost` | Chi phí ước tính của query planner (đơn vị tùy ý, so sánh tương đối mới có ý nghĩa) |
+| `Plan Rows` so với `Actual Rows` | Chênh lệch lớn cho thấy thống kê cũ — chạy `ANALYZE` |
+| `Actual Total Time` | Millisecond thực tế cho node này (chỉ với EXPLAIN ANALYZE) |
+| `Buffers` | Các trang đọc từ cache so với đĩa (thêm tùy chọn `BUFFERS` để xem) |
+
+## Các Loại Node Thường Gặp
+
+| Loại Node | Ý nghĩa |
+|---|---|
+| **Seq Scan** | Quét toàn bộ bảng — chấp nhận được với bảng nhỏ, tốn kém với bảng lớn |
+| **Index Scan** | Dùng chỉ mục để định vị hàng — thường nhanh |
+| **Index Only Scan** | Tất cả dữ liệu cần thiết đến từ chỉ mục — rất nhanh |
+| **Hash Join** | Xây dựng bảng hash từ một bên, dò với bên kia |
+| **Nested Loop** | Lặp qua các hàng bên ngoài, tra cứu hàng khớp bên trong — tốt cho tập nhỏ |
+| **Sort** | Bước sắp xếp tường minh — có thể tràn ra đĩa nếu `work_mem` quá thấp |
+| **Bitmap Heap Scan** | Theo bitmap của các trang khớp — phổ biến với điều kiện OR |
+
+## Gợi ý Tối ưu hóa
+
+- **Seq Scan trên bảng lớn**: có thể thiếu chỉ mục. Kiểm tra [Phân tích Chỉ mục](/vi/user-guide/04-index-analysis).
+- **Node chi phí cao sâu trong cây**: đây là điểm tắc nghẽn — tập trung tối ưu hóa ở đó trước.
+- **Plan Rows thấp hơn nhiều so với Actual Rows**: chạy `ANALYZE tablename` để làm mới thống kê.
+- **Sort tràn ra đĩa**: tăng `work_mem` cho session hoặc truy vấn.
+- **Nhiều vòng lặp Nested Loop**: cân nhắc viết lại với join hoặc thêm chỉ mục trên quan hệ bên trong.
+
+**Tiếp theo:** [Phân tích Chỉ mục](/vi/user-guide/04-index-analysis) — tìm các chỉ mục không dùng và trùng lặp.

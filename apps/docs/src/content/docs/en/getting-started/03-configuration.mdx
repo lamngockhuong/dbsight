@@ -1,0 +1,74 @@
+---
+title: "Configuration"
+description: "Environment variables and configuration options for DBSight"
+---
+
+DBSight is configured entirely through environment variables. There are no config files to manage — set the variables in your shell, a `.env` file, or your container orchestration platform.
+
+## Environment Variables
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `PORT` | `42198` | No | HTTP server port |
+| `DATABASE_URL` | — | Yes | PostgreSQL connection string for DBSight's own metadata database |
+| `ENCRYPTION_KEY` | — | Yes | 64 hex characters (32 bytes) for AES-256-GCM DSN encryption |
+| `WORKER_INTERVAL_SECS` | `30` | No | How often (in seconds) the background worker collects metrics from monitored databases |
+
+## Encryption Key
+
+The encryption key protects stored database DSNs at rest. Generate one with:
+
+```bash
+openssl rand -hex 32
+```
+
+The output is exactly 64 hex characters representing 32 bytes — the key size required for AES-256-GCM. DBSight will refuse to start if the key is missing or the wrong length.
+
+**Important:** Store this key securely (e.g. a secrets manager or vault). If you lose it, existing encrypted DSNs cannot be recovered. Rotation requires re-entering all connections.
+
+## DATABASE_URL
+
+This connection string points to DBSight's own metadata database — not the databases you want to monitor. DBSight stores connection records and query snapshots here.
+
+```bash
+# Local development
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/dbsight_meta?sslmode=disable"
+
+# Remote with SSL
+DATABASE_URL="postgresql://dbsight:secret@db.example.com:5432/dbsight_meta?sslmode=require"
+```
+
+Run `./dbsight migrate` once to initialize the schema before starting the server.
+
+## Worker Interval
+
+`WORKER_INTERVAL_SECS` controls how frequently the background worker polls each monitored connection for new query statistics.
+
+```bash
+# Poll every 60 seconds instead of the default 30
+WORKER_INTERVAL_SECS=60
+```
+
+Lower values give more granular delta tracking but increase load on monitored databases. For production monitoring, `30`–`60` seconds is a reasonable range.
+
+## .env File
+
+Place a `.env` file at the project root and DBSight will load it automatically on startup:
+
+```bash
+# .env
+PORT=42198
+DATABASE_URL=postgresql://user:password@localhost:5432/dbsight_meta
+ENCRYPTION_KEY=a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2
+WORKER_INTERVAL_SECS=30
+```
+
+Do not commit `.env` files containing real credentials to version control.
+
+## Security Notes
+
+- DSNs for monitored databases are encrypted with AES-256-GCM before being written to the metadata database.
+- The `EncryptedDSN` field is never included in API responses (`json:"-"` tag).
+- DBSight is designed as a localhost-only tool with no authentication layer in the current release. Do not expose port `42198` to untrusted networks.
+
+**Next:** [Managing Connections](/en/user-guide/01-connections) — add your monitored databases.
