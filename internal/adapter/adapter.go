@@ -22,6 +22,7 @@ type DBAnalyzer interface {
 	GetExplainPlan(ctx context.Context, query string, opts QueryOpts) (*models.ExplainPlan, error)
 	GetIndexStats(ctx context.Context) ([]models.IndexStat, error)
 	GetTableStats(ctx context.Context) ([]models.TableStat, error)
+	GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error)
 	GetDatabaseStats(ctx context.Context) (*models.DatabaseStats, error)
 }
 

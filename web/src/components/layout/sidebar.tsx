@@ -1,4 +1,4 @@
-import { BarChart3, ClipboardPaste, Database, Home, Search } from 'lucide-react'
+import { BarChart3, ClipboardPaste, Database, FileSearch, Home, Search } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +16,7 @@ export function Sidebar({ connectionId }: SidebarProps) {
   const connNav = connectionId
     ? [
         { to: `/queries/${connectionId}`, label: 'Slow Queries', icon: Search },
+        { to: `/explain/${connectionId}`, label: 'EXPLAIN', icon: FileSearch },
         { to: `/indexes/${connectionId}`, label: 'Indexes', icon: BarChart3 },
       ]
     : []
