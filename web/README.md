@@ -18,7 +18,7 @@ pnpm install
 pnpm run dev        # Vite dev server at http://localhost:5173
 ```
 
-Vite proxies `/api` requests to `http://localhost:8080` (Go backend).
+Vite proxies `/api` requests to `http://localhost:42198` (Go backend).
 
 ## Scripts
 

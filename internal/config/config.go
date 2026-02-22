@@ -14,7 +14,7 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Port:           getEnv("PORT", "8080"),
+		Port:           getEnv("PORT", "42198"),
 		DatabaseURL:    getEnv("DATABASE_URL", ""),
 		EncryptionKey:  getEnv("ENCRYPTION_KEY", ""),
 		WorkerInterval: getEnvInt("WORKER_INTERVAL_SECS", 30),

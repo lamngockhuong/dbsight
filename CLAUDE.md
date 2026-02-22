@@ -21,8 +21,8 @@ cd web && pnpm run build       # Frontend only (tsc + vite)
 ```bash
 docker-compose up -d postgres  # Start local PostgreSQL
 go run . migrate               # Run DB migrations
-go run . serve                 # Start API server (port 8080) with embedded worker
-cd web && pnpm run dev          # Vite dev server with /api proxy to :8080
+go run . serve                 # Start API server (port 42198) with embedded worker
+cd web && pnpm run dev          # Vite dev server with /api proxy to :42198
 ```
 
 ### Test & Lint
@@ -99,7 +99,7 @@ web/src/
 
 - `@/` path alias configured in tsconfig + vite for imports
 - shadcn/ui + Tailwind CSS v4 for styling
-- Vite proxy: `/api` → `http://localhost:8080` in dev mode
+- Vite proxy: `/api` → `http://localhost:42198` in dev mode
 - SSE hook (`use-sse.ts`) with auto-reconnect for live query updates
 
 ### API Endpoints
@@ -119,7 +119,7 @@ POST           /api/paste/queries                      — Parse slow log text
 
 | Variable               | Default    | Description                                            |
 | ---------------------- | ---------- | ------------------------------------------------------ |
-| `PORT`                 | `8080`     | HTTP server port                                       |
+| `PORT`                 | `42198`     | HTTP server port                                       |
 | `DATABASE_URL`         | (required) | PostgreSQL connection string for app metadata DB       |
 | `ENCRYPTION_KEY`       | (required) | 64 hex chars (32 bytes) for AES-256-GCM DSN encryption |
 | `WORKER_INTERVAL_SECS` | `30`       | Background worker polling interval                     |

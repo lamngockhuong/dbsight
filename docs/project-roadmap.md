@@ -317,14 +317,14 @@ Provide production-ready deployment patterns with security, health checks, and o
   # Stage 3: Runtime
   FROM gcr.io/distroless/base-debian12
   COPY --from=builder /app/bin/dbsight /
-  EXPOSE 8080
+  EXPOSE 42198
   ENTRYPOINT ["/dbsight", "serve"]
   ```
 
 **Health Checks:**
 
 - Add handler: GET /health → returns {status: "ok", db: "connected", worker: "active"}
-- Docker HEALTHCHECK: `curl -f http://localhost:8080/health || exit 1`
+- Docker HEALTHCHECK: `curl -f http://localhost:42198/health || exit 1`
 - Update main.go: graceful shutdown handler on SIGTERM
 
 **Observability:**

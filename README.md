@@ -4,7 +4,7 @@ Database performance analyzer for PostgreSQL. Monitor slow queries, visualize EX
 
 ![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## Features
@@ -53,7 +53,7 @@ go run . serve
 ```bash
 cd web
 pnpm install
-pnpm run dev    # Vite dev server on :5173, proxies /api to :8080
+pnpm run dev    # Vite dev server on :5173, proxies /api to :42198
 ```
 
 ### Production Build
@@ -67,7 +67,7 @@ Or with Docker:
 
 ```bash
 make docker-build
-docker run -e DATABASE_URL=... -e ENCRYPTION_KEY=... -p 8080:8080 dbsight:latest
+docker run -e DATABASE_URL=... -e ENCRYPTION_KEY=... -p 42198:42198 dbsight:latest
 ```
 
 ## Architecture
@@ -113,7 +113,7 @@ docker run -e DATABASE_URL=... -e ENCRYPTION_KEY=... -p 8080:8080 dbsight:latest
 
 | Variable               | Default | Description                             |
 | ---------------------- | ------- | --------------------------------------- |
-| `PORT`                 | `8080`  | HTTP server port                        |
+| `PORT`                 | `42198`  | HTTP server port                        |
 | `DATABASE_URL`         | —       | PostgreSQL connection string for app DB |
 | `ENCRYPTION_KEY`       | —       | 64 hex chars (32 bytes) for AES-256-GCM |
 | `WORKER_INTERVAL_SECS` | `30`    | Metrics polling interval in seconds     |

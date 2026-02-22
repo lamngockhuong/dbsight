@@ -74,7 +74,7 @@ The backend runs a background metrics collector (worker goroutine) that polls co
 
 Loads environment variables into a Config struct:
 
-- `PORT`: HTTP server port (default: 8080)
+- `PORT`: HTTP server port (default: 42198)
 - `DATABASE_URL`: PostgreSQL connection string
 - `ENCRYPTION_KEY`: 32-byte hex string for AES-256-GCM
 - `WORKER_INTERVAL_SECS`: Metrics polling interval (default: 30)

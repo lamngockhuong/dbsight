@@ -11,6 +11,7 @@ dbsight/
 ├── .env.example                     # Environment variable template
 ├── go.mod / go.sum                  # Go module dependencies
 ├── README.md                        # Project overview (end-user)
+├── LICENSE                          # MIT license
 ├── CLAUDE.md                        # Development instructions
 │
 ├── internal/

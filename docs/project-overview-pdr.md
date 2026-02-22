@@ -8,6 +8,8 @@ DBSight is a lightweight, single-binary database performance analyzer for Postgr
 
 **Key Value Proposition:** Fast, self-contained performance monitoring with zero learning curve—embed it in any PostgreSQL environment and start analyzing within minutes.
 
+**License:** MIT
+
 ## Product Goals
 
 1. **Minimize Setup Friction** — Single binary deployment, one environment variable for encryption, auto-running migrations

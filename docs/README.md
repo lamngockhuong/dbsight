@@ -51,7 +51,7 @@ go run . migrate
 
 # 4. Start backend server
 go run . serve
-# API available at http://localhost:8080
+# API available at http://localhost:42198
 
 # 5. In another terminal, start frontend dev server
 cd web
@@ -64,7 +64,7 @@ npm run dev
 
 | Variable               | Default    | Description                            |
 | ---------------------- | ---------- | -------------------------------------- |
-| `PORT`                 | `8080`     | API server port                        |
+| `PORT`                 | `42198`     | API server port                        |
 | `DATABASE_URL`         | (required) | PostgreSQL connection string           |
 | `ENCRYPTION_KEY`       | (required) | 32-byte hex for AES-256-GCM encryption |
 | `WORKER_INTERVAL_SECS` | `30`       | Metrics polling interval (seconds)     |
@@ -72,7 +72,7 @@ npm run dev
 ### Example `.env`
 
 ```bash
-PORT=8080
+PORT=42198
 DATABASE_URL=postgres://dbanalyzer:secret@localhost:5432/dbanalyzer?sslmode=disable
 ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 WORKER_INTERVAL_SECS=30
@@ -128,7 +128,7 @@ go run . migrate
 
 ## API Endpoints
 
-Base URL: `http://localhost:8080/api`
+Base URL: `http://localhost:42198/api`
 
 | Method   | Endpoint                            | Description                   |
 | -------- | ----------------------------------- | ----------------------------- |

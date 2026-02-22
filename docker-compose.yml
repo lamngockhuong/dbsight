@@ -18,7 +18,7 @@ services:
       DATABASE_URL: postgres://dbanalyzer:secret@postgres:5432/dbanalyzer?sslmode=disable
       ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     ports:
-      - "8080:8080"
+      - "42198:42198"
 
 volumes:
   pgdata:

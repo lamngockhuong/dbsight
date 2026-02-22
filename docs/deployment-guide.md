@@ -25,7 +25,7 @@ export DATABASE_URL="postgres://dbanalyzer:secret@localhost:5432/dbanalyzer?sslm
 # Run migrations
 go run . migrate
 
-# Start backend server (port 8080)
+# Start backend server (port 42198)
 go run . serve
 ```
 
@@ -35,7 +35,7 @@ In another terminal:
 cd web
 npm install
 npm run dev    # Frontend dev server on http://localhost:5173
-# Vite proxy routes /api/* to http://localhost:8080
+# Vite proxy routes /api/* to http://localhost:42198
 ```
 
 ### Development without Docker
@@ -49,7 +49,7 @@ createdb -U postgres dbanalyzer
 # Set environment
 export DATABASE_URL="postgres://postgres:password@localhost:5432/dbanalyzer"
 export ENCRYPTION_KEY=$(openssl rand -hex 32)
-export PORT=8080
+export PORT=42198
 
 # Run migrations and start server
 go run . migrate && go run . serve
@@ -70,7 +70,7 @@ Image size: ~60-80MB (includes Go binary ~15MB, React dist ~500KB, Alpine base ~
 
 ```bash
 docker-compose up -d
-# App available at http://localhost:8080
+# App available at http://localhost:42198
 # PostgreSQL at localhost:5432
 ```
 
@@ -83,8 +83,8 @@ docker run -d \
   --name dbsight \
   -e DATABASE_URL="postgres://user:pass@postgres-host:5432/dbanalyzer" \
   -e ENCRYPTION_KEY="$(openssl rand -hex 32)" \
-  -e PORT=8080 \
-  -p 8080:8080 \
+  -e PORT=42198 \
+  -p 42198:42198 \
   dbsight:latest serve
 ```
 
@@ -94,7 +94,7 @@ docker run -d \
 | ---------------------- | -------- | ------- | ---------------------------------------------------------------- |
 | `DATABASE_URL`         | Yes      | —       | `postgres://user:pass@localhost:5432/dbanalyzer?sslmode=disable` |
 | `ENCRYPTION_KEY`       | Yes      | —       | `abc123...` (64 hex chars = 32 bytes)                            |
-| `PORT`                 | No       | `8080`  | `8080`                                                           |
+| `PORT`                 | No       | `42198`  | `42198`                                                           |
 | `WORKER_INTERVAL_SECS` | No       | `30`    | `30`                                                             |
 
 Generate encryption key:
@@ -115,7 +115,7 @@ go run -c 'package main; import ("crypto/rand"; "fmt"; "encoding/hex") func main
 - [ ] PostgreSQL 14+ for app database (separate from target DBs)
 - [ ] Encryption key generated and stored securely
 - [ ] Database backups configured
-- [ ] Firewall rules: allow 8080 (or reverse proxy port) inbound
+- [ ] Firewall rules: allow 42198 (or reverse proxy port) inbound
 - [ ] SSL/TLS certificate provisioned (via reverse proxy)
 
 ### Database Preparation
@@ -144,7 +144,7 @@ SELECT * FROM pg_stat_statements LIMIT 1;
 # /etc/nginx/sites-available/dbsight
 
 upstream dbsight {
-    server 127.0.0.1:8080;
+    server 127.0.0.1:42198;
 }
 
 server {
@@ -207,7 +207,7 @@ RestartSec=5s
 
 Environment="DATABASE_URL=postgres://user:pass@postgres.internal:5432/dbsight?sslmode=require"
 Environment="ENCRYPTION_KEY=abc123..."
-Environment="PORT=8080"
+Environment="PORT=42198"
 Environment="WORKER_INTERVAL_SECS=30"
 
 StandardOutput=journal
@@ -236,7 +236,7 @@ version: "3.9"
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: dbsight
       POSTGRES_USER: dbsight
@@ -255,10 +255,10 @@ services:
     environment:
       DATABASE_URL: postgres://dbsight:${DB_PASSWORD}@postgres:5432/dbsight
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      PORT: 8080
+      PORT: 42198
       WORKER_INTERVAL_SECS: 30
     ports:
-      - "8080:8080"
+      - "42198:42198"
     depends_on:
       postgres:
         condition: service_healthy
@@ -313,7 +313,7 @@ Currently, DBSight does not expose a `/health` endpoint. For production, add rea
 
 ```bash
 # Simple check: API responds
-curl -f http://localhost:8080/api/connections || exit 1
+curl -f http://localhost:42198/api/connections || exit 1
 ```
 
 Post-MVP will add dedicated `/health` endpoint with:
@@ -380,7 +380,7 @@ kind: ConfigMap
 metadata:
   name: dbsight-config
 data:
-  PORT: "8080"
+  PORT: "42198"
   WORKER_INTERVAL_SECS: "30"
 ---
 apiVersion: v1
@@ -410,7 +410,7 @@ spec:
         - name: dbsight
           image: dbsight:latest
           ports:
-            - containerPort: 8080
+            - containerPort: 42198
           envFrom:
             - configMapRef:
                 name: dbsight-config
@@ -426,7 +426,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /api/connections
-              port: 8080
+              port: 42198
             initialDelaySeconds: 10
             periodSeconds: 30
 ---
@@ -440,14 +440,14 @@ spec:
     app: dbsight
   ports:
     - port: 80
-      targetPort: 8080
+      targetPort: 42198
 ```
 
 Deploy:
 
 ```bash
 kubectl apply -f k8s-manifest.yaml
-kubectl port-forward svc/dbsight-svc 8080:80
+kubectl port-forward svc/dbsight-svc 42198:80
 ```
 
 ## Troubleshooting
