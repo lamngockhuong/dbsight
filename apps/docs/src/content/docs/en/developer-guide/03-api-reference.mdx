@@ -172,7 +172,7 @@ Server-Sent Events (SSE) stream. The server pushes a new event each time the wor
 
 **Response** — `Content-Type: text/event-stream`
 
-Each event is a JSON object with the same shape as the `/queries` response, prefixed with `data: `.
+Each event is a JSON object with the same shape as the `/queries` response, prefixed with `data:`.
 
 The frontend `use-sse.ts` hook consumes this endpoint with automatic reconnect.
 
@@ -184,10 +184,10 @@ Returns all stored snapshots for the connection, ordered by capture time descend
 
 **Query parameters**
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `limit` | integer | 50 | Max snapshots to return |
-| `offset` | integer | 0 | Pagination offset |
+| Parameter | Type    | Default | Description             |
+| --------- | ------- | ------- | ----------------------- |
+| `limit`   | integer | 50      | Max snapshots to return |
+| `offset`  | integer | 0       | Pagination offset       |
 
 **Response 200**
 

@@ -36,17 +36,17 @@ flowchart LR
 
 ## Package Structure
 
-| Package | Purpose |
-|---|---|
-| `main.go` | Cobra CLI (`serve`, `migrate`), wires all dependencies |
-| `internal/config/` | Loads env vars into a typed `Config` struct |
-| `internal/models/` | Shared domain types (`Connection`, `SlowQuery`, `IndexStat`, …) |
-| `internal/store/` | `Store` interface + pgxpool implementation, migration runner |
+| Package             | Purpose                                                                      |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `main.go`           | Cobra CLI (`serve`, `migrate`), wires all dependencies                       |
+| `internal/config/`  | Loads env vars into a typed `Config` struct                                  |
+| `internal/models/`  | Shared domain types (`Connection`, `SlowQuery`, `IndexStat`, …)              |
+| `internal/store/`   | `Store` interface + pgxpool implementation, migration runner                 |
 | `internal/adapter/` | `DBAnalyzer` interface + PostgreSQL adapter (slow queries, EXPLAIN, indexes) |
-| `internal/api/` | Chi router, middleware (logger, recovery, CORS), HTTP handlers |
-| `internal/worker/` | Ticker-based scheduler, per-connection collector with concurrency limit |
-| `internal/crypto/` | AES-256-GCM encrypt/decrypt for DSN storage |
-| `migrations/` | SQL files embedded via `migrations/embed.go` |
+| `internal/api/`     | Chi router, middleware (logger, recovery, CORS), HTTP handlers               |
+| `internal/worker/`  | Ticker-based scheduler, per-connection collector with concurrency limit      |
+| `internal/crypto/`  | AES-256-GCM encrypt/decrypt for DSN storage                                  |
+| `migrations/`       | SQL files embedded via `migrations/embed.go`                                 |
 
 ## Key Design Decisions
 

@@ -172,7 +172,7 @@ Luồng Server-Sent Events (SSE). Server đẩy một sự kiện mới mỗi kh
 
 **Phản hồi** — `Content-Type: text/event-stream`
 
-Mỗi sự kiện là một đối tượng JSON có cùng cấu trúc với phản hồi `/queries`, được tiền tố bằng `data: `.
+Mỗi sự kiện là một đối tượng JSON có cùng cấu trúc với phản hồi `/queries`, được tiền tố bằng `data:`.
 
 Hook `use-sse.ts` của frontend sử dụng endpoint này với tự động kết nối lại.
 
@@ -184,8 +184,8 @@ Trả về tất cả các Snapshot đã lưu cho kết nối, sắp xếp theo 
 
 **Tham số truy vấn**
 
-| Tham số  | Kiểu    | Mặc định | Mô tả                    |
-|----------|---------|----------|--------------------------|
+| Tham số  | Kiểu    | Mặc định | Mô tả                     |
+| -------- | ------- | -------- | ------------------------- |
 | `limit`  | integer | 50       | Số Snapshot tối đa trả về |
 | `offset` | integer | 0        | Offset phân trang         |
 

@@ -51,23 +51,23 @@ LIMIT $2
 
 ### Parameters
 
-| Parameter | Type    | Default | Description                                         |
-|-----------|---------|---------|-----------------------------------------------------|
+| Parameter | Type    | Default | Description                                          |
+| --------- | ------- | ------- | ---------------------------------------------------- |
 | `$1`      | float64 | `0`     | Minimum mean execution time in milliseconds (filter) |
-| `$2`      | int     | `50`    | Maximum number of rows returned                     |
+| `$2`      | int     | `50`    | Maximum number of rows returned                      |
 
 Results are ordered by `total_exec_time DESC` so the most expensive queries (by cumulative cost) appear first.
 
 ### Column Descriptions
 
-| Column           | Type    | Description                                           |
-|------------------|---------|-------------------------------------------------------|
-| `queryid`        | text    | Unique hash identifier for the normalized query       |
-| `query`          | text    | Normalized query text (literals replaced with `$n`)   |
-| `calls`          | bigint  | Total number of times the query was executed          |
-| `total_exec_time`| float8  | Cumulative execution time across all calls (ms)       |
-| `mean_exec_time` | float8  | Average execution time per call (ms)                  |
-| `rows`           | bigint  | Total rows returned or affected across all calls      |
+| Column            | Type   | Description                                         |
+| ----------------- | ------ | --------------------------------------------------- |
+| `queryid`         | text   | Unique hash identifier for the normalized query     |
+| `query`           | text   | Normalized query text (literals replaced with `$n`) |
+| `calls`           | bigint | Total number of times the query was executed        |
+| `total_exec_time` | float8 | Cumulative execution time across all calls (ms)     |
+| `mean_exec_time`  | float8 | Average execution time per call (ms)                |
+| `rows`            | bigint | Total rows returned or affected across all calls    |
 
 ## How DBSight Uses This Data
 

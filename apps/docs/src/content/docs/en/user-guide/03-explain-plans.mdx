@@ -16,10 +16,10 @@ EXPLAIN plans show exactly how your database intends to (or actually did) execut
 
 ## EXPLAIN vs EXPLAIN ANALYZE
 
-| Mode | Executes Query | Shows Actual Times | Safe on Production |
-|---|---|---|---|
-| EXPLAIN | No | No | Yes |
-| EXPLAIN ANALYZE | Yes | Yes | Use with caution |
+| Mode            | Executes Query | Shows Actual Times | Safe on Production |
+| --------------- | -------------- | ------------------ | ------------------ |
+| EXPLAIN         | No             | No                 | Yes                |
+| EXPLAIN ANALYZE | Yes            | Yes                | Use with caution   |
 
 Use **EXPLAIN** for a quick look at the planner's strategy without touching data. Use **EXPLAIN ANALYZE** when you need actual row counts and timing to diagnose plan estimation errors — but be aware it runs the query for real.
 
@@ -71,25 +71,25 @@ PostgreSQL returns the plan as a JSON tree. Key fields to look at:
 }
 ```
 
-| Field | Meaning |
-|---|---|
-| `Node Type` | The operation PostgreSQL is performing |
-| `Total Cost` | Planner's estimated cost (arbitrary units, relative comparisons matter) |
-| `Plan Rows` vs `Actual Rows` | Large discrepancies indicate stale statistics — run `ANALYZE` |
-| `Actual Total Time` | Wall-clock milliseconds for this node (EXPLAIN ANALYZE only) |
-| `Buffers` | Pages read from cache vs disk (add `BUFFERS` option to see) |
+| Field                        | Meaning                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `Node Type`                  | The operation PostgreSQL is performing                                  |
+| `Total Cost`                 | Planner's estimated cost (arbitrary units, relative comparisons matter) |
+| `Plan Rows` vs `Actual Rows` | Large discrepancies indicate stale statistics — run `ANALYZE`           |
+| `Actual Total Time`          | Wall-clock milliseconds for this node (EXPLAIN ANALYZE only)            |
+| `Buffers`                    | Pages read from cache vs disk (add `BUFFERS` option to see)             |
 
 ## Common Node Types
 
-| Node Type | What It Means |
-|---|---|
-| **Seq Scan** | Full table scan — acceptable on small tables, expensive on large ones |
-| **Index Scan** | Uses an index to locate rows — usually fast |
-| **Index Only Scan** | All required data comes from the index — very fast |
-| **Hash Join** | Builds a hash table from one side, probes with the other |
-| **Nested Loop** | Iterates outer rows, looks up matching inner rows — good for small sets |
-| **Sort** | Explicit sort step — may spill to disk if `work_mem` is too low |
-| **Bitmap Heap Scan** | Follows a bitmap of matching pages — common with OR conditions |
+| Node Type            | What It Means                                                           |
+| -------------------- | ----------------------------------------------------------------------- |
+| **Seq Scan**         | Full table scan — acceptable on small tables, expensive on large ones   |
+| **Index Scan**       | Uses an index to locate rows — usually fast                             |
+| **Index Only Scan**  | All required data comes from the index — very fast                      |
+| **Hash Join**        | Builds a hash table from one side, probes with the other                |
+| **Nested Loop**      | Iterates outer rows, looks up matching inner rows — good for small sets |
+| **Sort**             | Explicit sort step — may spill to disk if `work_mem` is too low         |
+| **Bitmap Heap Scan** | Follows a bitmap of matching pages — common with OR conditions          |
 
 ## Optimization Tips
 

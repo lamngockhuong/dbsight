@@ -35,12 +35,12 @@ New queries that appeared since the last snapshot are added to the table. Querie
 
 The dashboard header shows database-level stats collected alongside query data:
 
-| Metric | Description |
-|---|---|
-| **Database Size** | Total disk space used by the monitored database |
-| **Active Connections** | Current number of client connections |
-| **Max Connections** | `max_connections` setting from `pg_settings` |
-| **Cache Hit Ratio** | Percentage of block reads served from `shared_buffers` |
+| Metric                 | Description                                            |
+| ---------------------- | ------------------------------------------------------ |
+| **Database Size**      | Total disk space used by the monitored database        |
+| **Active Connections** | Current number of client connections                   |
+| **Max Connections**    | `max_connections` setting from `pg_settings`           |
+| **Cache Hit Ratio**    | Percentage of block reads served from `shared_buffers` |
 
 These update on every worker pass alongside the query data.
 
@@ -48,12 +48,12 @@ These update on every worker pass alongside the query data.
 
 The cache hit ratio is one of the most actionable metrics on the dashboard:
 
-| Ratio | Interpretation |
-|---|---|
-| **> 99%** | Healthy — most reads served from memory |
-| **95–99%** | Acceptable — monitor for downward trend |
-| **< 95%** | Potentially under-provisioned `shared_buffers` |
-| **< 90%** | Investigate — frequent disk reads, likely needs more RAM |
+| Ratio      | Interpretation                                           |
+| ---------- | -------------------------------------------------------- |
+| **> 99%**  | Healthy — most reads served from memory                  |
+| **95–99%** | Acceptable — monitor for downward trend                  |
+| **< 95%**  | Potentially under-provisioned `shared_buffers`           |
+| **< 90%**  | Investigate — frequent disk reads, likely needs more RAM |
 
 A persistently low cache hit ratio usually means `shared_buffers` in `postgresql.conf` is too small for your working set. As a starting point, PostgreSQL recommends setting `shared_buffers` to 25% of available RAM.
 

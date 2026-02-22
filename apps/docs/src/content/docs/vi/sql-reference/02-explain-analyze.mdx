@@ -33,6 +33,7 @@ EXPLAIN (FORMAT JSON) <query>
 ```
 
 Sử dụng chế độ này khi:
+
 - Truy vấn tốn kém và bạn chỉ cần cấu trúc kế hoạch
 - Truy vấn có hiệu ứng phụ ghi mà bạn muốn tránh thực thi
 - Bạn muốn kết quả ngay lập tức mà không cần chờ thực thi
@@ -71,18 +72,18 @@ Mỗi nút trong `Plans` theo cùng một cấu trúc đệ quy.
 
 ## Các Loại Nút Kế hoạch Phổ biến
 
-| Loại nút           | Mô tả                                                                |
-|--------------------|----------------------------------------------------------------------|
+| Loại nút           | Mô tả                                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
 | `Seq Scan`         | Quét toàn bộ bảng — đọc mọi hàng. Bình thường với bảng nhỏ hoặc tập kết quả lớn; tốn kém trên bảng lớn không có mệnh đề `WHERE`. |
-| `Index Scan`       | Sử dụng chỉ mục để định vị hàng, sau đó lấy từ heap. Tốt cho các truy vấn có tính chọn lọc cao. |
-| `Index Only Scan`  | Đáp ứng truy vấn hoàn toàn từ chỉ mục, không truy cập heap. Đường đọc hiệu quả nhất. |
-| `Bitmap Heap Scan` | Sử dụng bitmap từ một hoặc nhiều chỉ mục, sau đó lấy các trang heap theo thứ tự. Tốt cho tính chọn lọc vừa phải. |
-| `Hash Join`        | Xây dựng bảng hash từ quan hệ nhỏ hơn rồi dò với quan hệ lớn hơn. Phổ biến cho equi-join trên dữ liệu chưa sắp xếp. |
-| `Nested Loop`      | Với mỗi hàng trong tập ngoài, quét tập trong. Hiệu quả khi phía trong sử dụng chỉ mục. |
-| `Merge Join`       | Nối hai đầu vào đã sắp xếp trước. Hiệu quả khi cả hai phía đã được sắp xếp. |
-| `Sort`             | Bước sắp xếp tường minh. Chú ý `Sort Method: external merge` biểu thị tràn ra đĩa. |
-| `Aggregate`        | Tính toán các hàm tổng hợp (COUNT, SUM, v.v.). |
-| `Limit`            | Cắt bớt đầu ra còn N hàng. |
+| `Index Scan`       | Sử dụng chỉ mục để định vị hàng, sau đó lấy từ heap. Tốt cho các truy vấn có tính chọn lọc cao.                                  |
+| `Index Only Scan`  | Đáp ứng truy vấn hoàn toàn từ chỉ mục, không truy cập heap. Đường đọc hiệu quả nhất.                                             |
+| `Bitmap Heap Scan` | Sử dụng bitmap từ một hoặc nhiều chỉ mục, sau đó lấy các trang heap theo thứ tự. Tốt cho tính chọn lọc vừa phải.                 |
+| `Hash Join`        | Xây dựng bảng hash từ quan hệ nhỏ hơn rồi dò với quan hệ lớn hơn. Phổ biến cho equi-join trên dữ liệu chưa sắp xếp.              |
+| `Nested Loop`      | Với mỗi hàng trong tập ngoài, quét tập trong. Hiệu quả khi phía trong sử dụng chỉ mục.                                           |
+| `Merge Join`       | Nối hai đầu vào đã sắp xếp trước. Hiệu quả khi cả hai phía đã được sắp xếp.                                                      |
+| `Sort`             | Bước sắp xếp tường minh. Chú ý `Sort Method: external merge` biểu thị tràn ra đĩa.                                               |
+| `Aggregate`        | Tính toán các hàm tổng hợp (COUNT, SUM, v.v.).                                                                                   |
+| `Limit`            | Cắt bớt đầu ra còn N hàng.                                                                                                       |
 
 ## Những Điều Cần Chú ý
 

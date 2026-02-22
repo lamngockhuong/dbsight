@@ -51,23 +51,23 @@ LIMIT $2
 
 ### Tham số
 
-| Tham số | Kiểu    | Mặc định | Mô tả                                               |
-|---------|---------|----------|-----------------------------------------------------|
+| Tham số | Kiểu    | Mặc định | Mô tả                                                                |
+| ------- | ------- | -------- | -------------------------------------------------------------------- |
 | `$1`    | float64 | `0`      | Thời gian thực thi trung bình tối thiểu tính bằng mili giây (bộ lọc) |
-| `$2`    | int     | `50`     | Số hàng trả về tối đa                              |
+| `$2`    | int     | `50`     | Số hàng trả về tối đa                                                |
 
 Kết quả được sắp xếp theo `total_exec_time DESC` để các truy vấn tốn kém nhất (theo chi phí tích lũy) xuất hiện đầu tiên.
 
 ### Mô tả các cột
 
-| Cột              | Kiểu    | Mô tả                                                     |
-|------------------|---------|-----------------------------------------------------------|
-| `queryid`        | text    | Mã định danh hash duy nhất cho truy vấn đã chuẩn hóa     |
-| `query`          | text    | Văn bản truy vấn đã chuẩn hóa (các giá trị thực được thay bằng `$n`) |
-| `calls`          | bigint  | Tổng số lần truy vấn được thực thi                        |
-| `total_exec_time`| float8  | Tổng thời gian thực thi cộng dồn trên tất cả các lần gọi (ms) |
-| `mean_exec_time` | float8  | Thời gian thực thi trung bình mỗi lần gọi (ms)           |
-| `rows`           | bigint  | Tổng số hàng trả về hoặc bị ảnh hưởng trên tất cả các lần gọi |
+| Cột               | Kiểu   | Mô tả                                                                |
+| ----------------- | ------ | -------------------------------------------------------------------- |
+| `queryid`         | text   | Mã định danh hash duy nhất cho truy vấn đã chuẩn hóa                 |
+| `query`           | text   | Văn bản truy vấn đã chuẩn hóa (các giá trị thực được thay bằng `$n`) |
+| `calls`           | bigint | Tổng số lần truy vấn được thực thi                                   |
+| `total_exec_time` | float8 | Tổng thời gian thực thi cộng dồn trên tất cả các lần gọi (ms)        |
+| `mean_exec_time`  | float8 | Thời gian thực thi trung bình mỗi lần gọi (ms)                       |
+| `rows`            | bigint | Tổng số hàng trả về hoặc bị ảnh hưởng trên tất cả các lần gọi        |
 
 ## Cách DBSight Sử Dụng Dữ Liệu Này
 

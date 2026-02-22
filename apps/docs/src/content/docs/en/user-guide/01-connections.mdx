@@ -61,6 +61,7 @@ appuser:secret@tcp(db.example.com:3306)/production?parseTime=true&timeout=10s&ch
 ```
 
 **Requirements:**
+
 - `performance_schema` must be enabled on the MySQL server
 - Use a read-only user with `SELECT` access to `performance_schema.*`, `information_schema.*`, and `SHOW GLOBAL STATUS`
 
@@ -83,6 +84,7 @@ appuser:secret@tcp(db.example.com:3306)/production?parseTime=true&timeout=10s
 ```
 
 **Requirements:**
+
 - `performance_schema` must be enabled on the MariaDB server
 - Use a read-only user with `SELECT` access to `performance_schema.*`, `information_schema.*`, and `SHOW GLOBAL STATUS`
 

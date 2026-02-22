@@ -7,12 +7,12 @@ DBSight is configured entirely through environment variables. There are no confi
 
 ## Environment Variables
 
-| Variable | Default | Required | Description |
-|---|---|---|---|
-| `PORT` | `42198` | No | HTTP server port |
-| `DATABASE_URL` | — | Yes | PostgreSQL connection string for DBSight's own metadata database |
-| `ENCRYPTION_KEY` | — | Yes | 64 hex characters (32 bytes) for AES-256-GCM DSN encryption |
-| `WORKER_INTERVAL_SECS` | `30` | No | How often (in seconds) the background worker collects metrics from monitored databases |
+| Variable               | Default | Required | Description                                                                            |
+| ---------------------- | ------- | -------- | -------------------------------------------------------------------------------------- |
+| `PORT`                 | `42198` | No       | HTTP server port                                                                       |
+| `DATABASE_URL`         | —       | Yes      | PostgreSQL connection string for DBSight's own metadata database                       |
+| `ENCRYPTION_KEY`       | —       | Yes      | 64 hex characters (32 bytes) for AES-256-GCM DSN encryption                            |
+| `WORKER_INTERVAL_SECS` | `30`    | No       | How often (in seconds) the background worker collects metrics from monitored databases |
 
 ## Encryption Key
 

@@ -11,28 +11,29 @@ Each row in the index table represents one index on one table. The exact stats a
 
 ### PostgreSQL
 
-| Column | Description |
-|---|---|
-| **Table** | The table the index belongs to |
-| **Index Name** | Name of the index |
-| **Scans** | Number of index scans initiated (from `pg_stat_user_indexes`) |
-| **Tuples Read** | Rows read via this index |
-| **Tuples Fetched** | Rows actually returned after visibility checks |
-| **Index Size** | Disk space consumed by the index |
+| Column             | Description                                                   |
+| ------------------ | ------------------------------------------------------------- |
+| **Table**          | The table the index belongs to                                |
+| **Index Name**     | Name of the index                                             |
+| **Scans**          | Number of index scans initiated (from `pg_stat_user_indexes`) |
+| **Tuples Read**    | Rows read via this index                                      |
+| **Tuples Fetched** | Rows actually returned after visibility checks                |
+| **Index Size**     | Disk space consumed by the index                              |
 
 Stats accumulate since the last `pg_stat_reset()` call. Interpret them relative to table age and traffic patterns — a new index on a quiet table will show low scans even if it is well-designed.
 
 ### MySQL 5.7+ / 8.0+
 
-| Column | Description |
-|---|---|
-| **Table** | The table the index belongs to |
-| **Index Name** | Name of the index |
-| **Scans** | Count from `performance_schema.table_io_waits_summary_by_index_usage` (reads + writes) |
-| **Rows Selected** | Rows examined by the index |
-| **Index Size** | Size from `information_schema.statistics` |
+| Column            | Description                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| **Table**         | The table the index belongs to                                                         |
+| **Index Name**    | Name of the index                                                                      |
+| **Scans**         | Count from `performance_schema.table_io_waits_summary_by_index_usage` (reads + writes) |
+| **Rows Selected** | Rows examined by the index                                                             |
+| **Index Size**    | Size from `information_schema.statistics`                                              |
 
 Clear performance schema stats with:
+
 ```sql
 TRUNCATE TABLE performance_schema.table_io_waits_summary_by_index_usage;
 ```
@@ -52,11 +53,13 @@ Before dropping an unused index:
 3. Consider the query workload — seasonal or batch queries may use the index rarely but critically.
 
 **PostgreSQL:**
+
 ```sql
 DROP INDEX CONCURRENTLY index_name;
 ```
 
 **MySQL/MariaDB:**
+
 ```sql
 DROP INDEX index_name ON table_name;
 ```
@@ -68,12 +71,14 @@ Duplicate indexes share the same column set and order on the same table. They wa
 DBSight flags pairs of indexes where the definition matches. Review each pair and drop the redundant one.
 
 **PostgreSQL:**
+
 ```sql
 SELECT indexname, indexdef FROM pg_indexes
 WHERE tablename = 'my_table';
 ```
 
 **MySQL/MariaDB:**
+
 ```sql
 SELECT DISTINCT
     a.INDEX_NAME,
@@ -92,23 +97,23 @@ Below the index table, DBSight shows per-table statistics:
 
 ### PostgreSQL
 
-| Column | Description |
-|---|---|
+| Column               | Description                                   |
+| -------------------- | --------------------------------------------- |
 | **Sequential Scans** | Full table scans (from `pg_stat_user_tables`) |
-| **Seq Scan Rows** | Average rows returned per scan |
-| **Live Tuples** | Estimated current row count |
-| **Dead Tuples** | Rows deleted/updated but not vacuumed |
-| **Table Size** | Total disk space (heap + toast) |
-| **Last Vacuum** | When autovacuum last processed the table |
-| **Last Analyze** | When statistics were last refreshed |
+| **Seq Scan Rows**    | Average rows returned per scan                |
+| **Live Tuples**      | Estimated current row count                   |
+| **Dead Tuples**      | Rows deleted/updated but not vacuumed         |
+| **Table Size**       | Total disk space (heap + toast)               |
+| **Last Vacuum**      | When autovacuum last processed the table      |
+| **Last Analyze**     | When statistics were last refreshed           |
 
 ### MySQL/MariaDB
 
-| Column | Description |
-|---|---|
-| **Table** | Table name |
-| **Rows** | Estimated row count |
-| **Data Size** | Size of table data |
+| Column         | Description                               |
+| -------------- | ----------------------------------------- |
+| **Table**      | Table name                                |
+| **Rows**       | Estimated row count                       |
+| **Data Size**  | Size of table data                        |
 | **Index Size** | Combined size of all indexes on the table |
 
 Note: MySQL/MariaDB does not expose the same level of per-operation granularity as PostgreSQL's `pg_stat_user_tables`.

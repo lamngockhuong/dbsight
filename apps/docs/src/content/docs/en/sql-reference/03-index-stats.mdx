@@ -26,15 +26,15 @@ Results are sorted by `idx_scan ASC` so unused indexes (0 scans) appear first, t
 
 ### Column Descriptions
 
-| Column             | Type   | Description                                                      |
-|--------------------|--------|------------------------------------------------------------------|
-| `schemaname`       | name   | Schema containing the table                                      |
-| `relname`          | name   | Table name                                                       |
-| `indexrelname`     | name   | Index name                                                       |
+| Column             | Type   | Description                                                        |
+| ------------------ | ------ | ------------------------------------------------------------------ |
+| `schemaname`       | name   | Schema containing the table                                        |
+| `relname`          | name   | Table name                                                         |
+| `indexrelname`     | name   | Index name                                                         |
 | `idx_scan`         | bigint | Number of times the index was used by the planner since last reset |
-| `idx_tup_read`     | bigint | Tuples returned from index scans                                 |
-| `idx_tup_fetch`    | bigint | Tuples fetched from the heap via this index                      |
-| `index_size_bytes` | bigint | On-disk size of the index in bytes                               |
+| `idx_tup_read`     | bigint | Tuples returned from index scans                                   |
+| `idx_tup_fetch`    | bigint | Tuples fetched from the heap via this index                        |
+| `index_size_bytes` | bigint | On-disk size of the index in bytes                                 |
 
 ### Interpreting Results
 
@@ -65,12 +65,12 @@ The self-join on `pg_indexes` matches pairs where both `tablename` and `indexdef
 
 ### Column Descriptions
 
-| Column       | Type | Description                                  |
-|--------------|------|----------------------------------------------|
-| `tablename`  | name | Table both indexes belong to                 |
-| `index1`     | name | First index name (alphabetically earlier)    |
-| `index2`     | name | Second index name (alphabetically later)     |
-| `indexdef`   | text | Full index definition (identical for both)   |
+| Column      | Type | Description                                |
+| ----------- | ---- | ------------------------------------------ |
+| `tablename` | name | Table both indexes belong to               |
+| `index1`    | name | First index name (alphabetically earlier)  |
+| `index2`    | name | Second index name (alphabetically later)   |
+| `indexdef`  | text | Full index definition (identical for both) |
 
 ### Interpreting Results
 
@@ -98,14 +98,14 @@ Results are sorted by `seq_scan DESC` to surface tables receiving the most full-
 
 ### Column Descriptions
 
-| Column             | Type   | Description                                                        |
-|--------------------|--------|--------------------------------------------------------------------|
-| `schemaname`       | name   | Schema containing the table                                        |
-| `relname`          | name   | Table name                                                         |
-| `seq_scan`         | bigint | Number of sequential (full) scans on this table                    |
-| `seq_tup_read`     | bigint | Total tuples read via sequential scans                             |
-| `n_live_tup`       | bigint | Estimated number of live rows                                      |
-| `table_size_bytes` | bigint | Total on-disk size including indexes and TOAST (bytes)             |
+| Column             | Type   | Description                                            |
+| ------------------ | ------ | ------------------------------------------------------ |
+| `schemaname`       | name   | Schema containing the table                            |
+| `relname`          | name   | Table name                                             |
+| `seq_scan`         | bigint | Number of sequential (full) scans on this table        |
+| `seq_tup_read`     | bigint | Total tuples read via sequential scans                 |
+| `n_live_tup`       | bigint | Estimated number of live rows                          |
+| `table_size_bytes` | bigint | Total on-disk size including indexes and TOAST (bytes) |
 
 ### Interpreting Results
 

@@ -33,6 +33,7 @@ EXPLAIN (FORMAT JSON) <query>
 ```
 
 Use this mode when:
+
 - The query is expensive and you only need the plan structure
 - The query has write side-effects you want to avoid executing
 - You want instant results without waiting for execution
@@ -71,18 +72,18 @@ Each node in `Plans` follows the same structure recursively.
 
 ## Common Plan Node Types
 
-| Node Type        | Description                                                         |
-|------------------|---------------------------------------------------------------------|
-| `Seq Scan`       | Full table scan — reads every row. Normal for small tables or large result sets; costly on large tables without a `WHERE` clause. |
-| `Index Scan`     | Uses an index to locate rows, then fetches from the heap. Good for selective queries. |
-| `Index Only Scan`| Satisfies the query entirely from the index, no heap access. Most efficient read path. |
-| `Bitmap Heap Scan` | Uses a bitmap from one or more indexes, then fetches heap pages in order. Good for moderate selectivity. |
-| `Hash Join`      | Builds a hash table from the smaller relation then probes with the larger. Common for equi-joins on unsorted data. |
-| `Nested Loop`    | For each row in the outer set, scans the inner set. Efficient when inner side uses an index. |
-| `Merge Join`     | Joins two pre-sorted inputs. Efficient when both sides are already ordered. |
-| `Sort`           | Explicit sort step. Look for high `Sort Method: external merge` which indicates disk spill. |
-| `Aggregate`      | Computes aggregate functions (COUNT, SUM, etc.). |
-| `Limit`          | Truncates output to N rows. |
+| Node Type          | Description                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `Seq Scan`         | Full table scan — reads every row. Normal for small tables or large result sets; costly on large tables without a `WHERE` clause. |
+| `Index Scan`       | Uses an index to locate rows, then fetches from the heap. Good for selective queries.                                             |
+| `Index Only Scan`  | Satisfies the query entirely from the index, no heap access. Most efficient read path.                                            |
+| `Bitmap Heap Scan` | Uses a bitmap from one or more indexes, then fetches heap pages in order. Good for moderate selectivity.                          |
+| `Hash Join`        | Builds a hash table from the smaller relation then probes with the larger. Common for equi-joins on unsorted data.                |
+| `Nested Loop`      | For each row in the outer set, scans the inner set. Efficient when inner side uses an index.                                      |
+| `Merge Join`       | Joins two pre-sorted inputs. Efficient when both sides are already ordered.                                                       |
+| `Sort`             | Explicit sort step. Look for high `Sort Method: external merge` which indicates disk spill.                                       |
+| `Aggregate`        | Computes aggregate functions (COUNT, SUM, etc.).                                                                                  |
+| `Limit`            | Truncates output to N rows.                                                                                                       |
 
 ## What to Look For
 

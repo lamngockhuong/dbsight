@@ -1,9 +1,13 @@
 {
   "markdown": {
-    "lineWidth": 120
+    "lineWidth": 120,
+    "associations": [
+      "**/*.mdx"
+    ]
   },
   "includes": [
-    "**/*.md"
+    "**/*.md",
+    "**/*.mdx"
   ],
   "excludes": [
     "node_modules",

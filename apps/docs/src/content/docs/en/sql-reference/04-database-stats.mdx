@@ -50,12 +50,12 @@ Returns the total on-disk size of the database in bytes, including all tables, i
 
 Counts connections currently executing a query (`state = 'active'`). This excludes idle connections, idle-in-transaction connections, and background workers.
 
-| `pg_stat_activity.state` | Meaning |
-|--------------------------|---------|
-| `active`                 | Executing a query right now — counted here |
-| `idle`                   | Connected but waiting for a command |
+| `pg_stat_activity.state` | Meaning                                       |
+| ------------------------ | --------------------------------------------- |
+| `active`                 | Executing a query right now — counted here    |
+| `idle`                   | Connected but waiting for a command           |
 | `idle in transaction`    | Inside a BEGIN block, not currently executing |
-| `fastpath function call` | Executing a fast-path function |
+| `fastpath function call` | Executing a fast-path function                |
 
 ### Max Connections
 
@@ -76,12 +76,12 @@ ROUND(
 
 The percentage of block reads served from PostgreSQL's shared buffer cache rather than from disk. `NULLIF` guards against division-by-zero on a fresh database with no I/O yet.
 
-| Range      | Status   | Interpretation                                                                 |
-|------------|----------|--------------------------------------------------------------------------------|
-| >= 99%     | Good     | Nearly all reads from memory. Expected for a well-tuned, warm database.        |
-| 95% – 99%  | Warning  | Some disk reads occurring. May be acceptable depending on dataset size.        |
-| < 95%      | Critical | Significant disk I/O. Consider increasing `shared_buffers` or adding RAM.     |
-| `NULL`     | N/A      | No block I/O recorded yet — database just started or statistics were reset.    |
+| Range     | Status   | Interpretation                                                              |
+| --------- | -------- | --------------------------------------------------------------------------- |
+| >= 99%    | Good     | Nearly all reads from memory. Expected for a well-tuned, warm database.     |
+| 95% – 99% | Warning  | Some disk reads occurring. May be acceptable depending on dataset size.     |
+| < 95%     | Critical | Significant disk I/O. Consider increasing `shared_buffers` or adding RAM.   |
+| `NULL`    | N/A      | No block I/O recorded yet — database just started or statistics were reset. |
 
 A low cache hit ratio does not always mean misconfiguration. Databases larger than available RAM will always have some disk reads; the key is whether the ratio is declining over time.
 

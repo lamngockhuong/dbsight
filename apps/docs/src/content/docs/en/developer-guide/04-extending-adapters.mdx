@@ -24,16 +24,16 @@ type DBAnalyzer interface {
 
 ### Method Descriptions
 
-| Method | Description |
-|---|---|
-| `Connect` | Open a connection pool using the decrypted DSN |
-| `Close` | Release all connections gracefully |
-| `GetSlowQueries` | Return top slow queries, analogous to `pg_stat_statements` |
-| `GetExplainPlan` | Run `EXPLAIN` on a query; use a read-only transaction |
-| `GetIndexStats` | Per-index usage stats (scans, rows read, size) |
-| `GetTableStats` | Per-table sequential scan and row counts |
-| `GetDuplicateIndexes` | Find indexes with identical definitions |
-| `GetDatabaseStats` | DB name, size, connection counts, cache hit ratio |
+| Method                | Description                                                |
+| --------------------- | ---------------------------------------------------------- |
+| `Connect`             | Open a connection pool using the decrypted DSN             |
+| `Close`               | Release all connections gracefully                         |
+| `GetSlowQueries`      | Return top slow queries, analogous to `pg_stat_statements` |
+| `GetExplainPlan`      | Run `EXPLAIN` on a query; use a read-only transaction      |
+| `GetIndexStats`       | Per-index usage stats (scans, rows read, size)             |
+| `GetTableStats`       | Per-table sequential scan and row counts                   |
+| `GetDuplicateIndexes` | Find indexes with identical definitions                    |
+| `GetDatabaseStats`    | DB name, size, connection counts, cache hit ratio          |
 
 `QueryOpts` carries collection settings:
 

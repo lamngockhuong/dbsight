@@ -7,12 +7,12 @@ DBSight được cấu hình hoàn toàn thông qua biến môi trường. Khôn
 
 ## Biến Môi trường
 
-| Biến | Mặc định | Bắt buộc | Mô tả |
-|---|---|---|---|
-| `PORT` | `42198` | Không | Cổng HTTP server |
-| `DATABASE_URL` | — | Có | Chuỗi kết nối PostgreSQL cho cơ sở dữ liệu metadata của DBSight |
-| `ENCRYPTION_KEY` | — | Có | 64 ký tự hex (32 byte) cho mã hóa DSN bằng AES-256-GCM |
-| `WORKER_INTERVAL_SECS` | `30` | Không | Tần suất (tính bằng giây) Worker nền thu thập metrics từ các cơ sở dữ liệu được theo dõi |
+| Biến                   | Mặc định | Bắt buộc | Mô tả                                                                                    |
+| ---------------------- | -------- | -------- | ---------------------------------------------------------------------------------------- |
+| `PORT`                 | `42198`  | Không    | Cổng HTTP server                                                                         |
+| `DATABASE_URL`         | —        | Có       | Chuỗi kết nối PostgreSQL cho cơ sở dữ liệu metadata của DBSight                          |
+| `ENCRYPTION_KEY`       | —        | Có       | 64 ký tự hex (32 byte) cho mã hóa DSN bằng AES-256-GCM                                   |
+| `WORKER_INTERVAL_SECS` | `30`     | Không    | Tần suất (tính bằng giây) Worker nền thu thập metrics từ các cơ sở dữ liệu được theo dõi |
 
 ## Khóa Mã hóa
 
