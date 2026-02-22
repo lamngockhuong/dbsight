@@ -1,68 +1,117 @@
 ---
 title: "Index Analysis"
-description: "Analyze index usage, find unused indexes, and detect duplicates"
+description: "Analyze index usage across PostgreSQL, MySQL, and MariaDB databases"
 ---
 
-The Index Analysis tab pulls data from `pg_stat_user_indexes` and `pg_stat_user_tables` to give you a picture of how effectively your indexes are being used — and which ones are costing you write overhead without helping reads.
+The Index Analysis tab pulls index usage data from your database to give you a picture of how effectively your indexes are being used — and which ones are costing you write overhead without helping reads.
 
 ## Index Usage Stats
 
-Each row in the index table represents one index on one table:
+Each row in the index table represents one index on one table. The exact stats available depend on your database type:
+
+### PostgreSQL
 
 | Column | Description |
 |---|---|
 | **Table** | The table the index belongs to |
 | **Index Name** | Name of the index |
-| **Scans** | Number of index scans initiated |
+| **Scans** | Number of index scans initiated (from `pg_stat_user_indexes`) |
 | **Tuples Read** | Rows read via this index |
-| **Tuples Fetched** | Rows actually returned to the query (after visibility checks) |
+| **Tuples Fetched** | Rows actually returned after visibility checks |
 | **Index Size** | Disk space consumed by the index |
 
 Stats accumulate since the last `pg_stat_reset()` call. Interpret them relative to table age and traffic patterns — a new index on a quiet table will show low scans even if it is well-designed.
 
+### MySQL 5.7+ / 8.0+
+
+| Column | Description |
+|---|---|
+| **Table** | The table the index belongs to |
+| **Index Name** | Name of the index |
+| **Scans** | Count from `performance_schema.table_io_waits_summary_by_index_usage` (reads + writes) |
+| **Rows Selected** | Rows examined by the index |
+| **Index Size** | Size from `information_schema.statistics` |
+
+Clear performance schema stats with:
+```sql
+TRUNCATE TABLE performance_schema.table_io_waits_summary_by_index_usage;
+```
+
+### MariaDB 10.x+
+
+Similar to MySQL with performance_schema. MariaDB's index detection uses `JSON_ARRAYAGG` to group columns across statistics tables.
+
 ## Identifying Unused Indexes
 
-An index with **0 scans** has not been used by the query planner since statistics were last reset. These are candidates for removal.
+An index with **0 scans** (or very low activity) has not been used by the query planner. These are candidates for removal.
 
 Before dropping an unused index:
 
 1. Confirm the stats have been accumulating long enough to be representative (at least a few days of normal traffic).
-2. Check whether the index exists for a write-path constraint (unique, primary key, foreign key) — those will show low scans but must not be dropped.
+2. Check whether the index exists for a constraint (unique, primary key, foreign key) — those will show low scans but must not be dropped.
 3. Consider the query workload — seasonal or batch queries may use the index rarely but critically.
 
-To drop a confirmed unused index:
-
+**PostgreSQL:**
 ```sql
 DROP INDEX CONCURRENTLY index_name;
 ```
 
-Using `CONCURRENTLY` avoids locking the table during removal.
+**MySQL/MariaDB:**
+```sql
+DROP INDEX index_name ON table_name;
+```
 
 ## Duplicate Index Detection
 
-Duplicate indexes share the same column set and order on the same table. They waste disk space and slow down every `INSERT`, `UPDATE`, and `DELETE` because PostgreSQL must maintain all copies.
+Duplicate indexes share the same column set and order on the same table. They waste disk space and slow down every write operation.
 
-DBSight flags pairs of indexes where the index definition matches. Review each flagged pair and drop the redundant one.
+DBSight flags pairs of indexes where the definition matches. Review each pair and drop the redundant one.
 
+**PostgreSQL:**
 ```sql
--- Check index definitions before dropping
 SELECT indexname, indexdef FROM pg_indexes
 WHERE tablename = 'my_table';
 ```
 
+**MySQL/MariaDB:**
+```sql
+SELECT DISTINCT
+    a.INDEX_NAME,
+    a.COLUMN_NAME,
+    GROUP_CONCAT(b.COLUMN_NAME ORDER BY b.SEQ_IN_INDEX) AS columns
+FROM information_schema.STATISTICS a
+JOIN information_schema.STATISTICS b ON a.TABLE_SCHEMA = b.TABLE_SCHEMA
+    AND a.TABLE_NAME = b.TABLE_NAME
+GROUP BY a.INDEX_NAME
+ORDER BY a.TABLE_NAME, a.INDEX_NAME;
+```
+
 ## Table-Level Stats
 
-Below the index table, DBSight shows per-table statistics drawn from `pg_stat_user_tables`:
+Below the index table, DBSight shows per-table statistics:
+
+### PostgreSQL
 
 | Column | Description |
 |---|---|
-| **Sequential Scans** | Full table scans — high numbers suggest a missing index |
-| **Seq Scan Rows** | Average rows returned per sequential scan |
+| **Sequential Scans** | Full table scans (from `pg_stat_user_tables`) |
+| **Seq Scan Rows** | Average rows returned per scan |
 | **Live Tuples** | Estimated current row count |
-| **Dead Tuples** | Rows deleted or updated but not yet vacuumed |
-| **Table Size** | Total disk space for the table (heap + toast) |
+| **Dead Tuples** | Rows deleted/updated but not vacuumed |
+| **Table Size** | Total disk space (heap + toast) |
 | **Last Vacuum** | When autovacuum last processed the table |
 | **Last Analyze** | When statistics were last refreshed |
+
+### MySQL/MariaDB
+
+| Column | Description |
+|---|---|
+| **Table** | Table name |
+| **Rows** | Estimated row count |
+| **Data Size** | Size of table data |
+| **Index Size** | Combined size of all indexes on the table |
+
+Note: MySQL/MariaDB does not expose the same level of per-operation granularity as PostgreSQL's `pg_stat_user_tables`.
 
 ## Interpreting Results
 

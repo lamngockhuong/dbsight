@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DBSight is a database performance analyzer — Go API server with embedded background worker + React SPA. Single binary serves API, worker (goroutine), and static files. Targets PostgreSQL via `pg_stat_statements`.
+DBSight is a database performance analyzer — Go API server with embedded background worker + React SPA. Single binary serves API, worker (goroutine), and static files. Supports PostgreSQL via `pg_stat_statements`, MySQL 5.7+/8.0+ via `performance_schema`, and MariaDB 10.x+ via `performance_schema`.
 
 ## Monorepo Structure
 
@@ -65,12 +65,24 @@ internal/models/                 — Domain types (Connection, SlowQuery, QueryD
 internal/store/store.go          — Store interface (connections, snapshots, index stats)
 internal/store/postgres.go       — pgxpool implementation of Store
 internal/store/migrate.go        — Embedded SQL migration runner
-internal/adapter/adapter.go      — DBAnalyzer interface + factory (extensible to MySQL etc.)
+internal/adapter/adapter.go      — DBAnalyzer interface + factory (PostgreSQL, MySQL, MariaDB)
 internal/adapter/postgres.go     — PostgreSQL adapter (Connect/Close)
-internal/adapter/slow_queries.go — pg_stat_statements queries
-internal/adapter/explain.go      — EXPLAIN plan (read-only tx for safety)
-internal/adapter/indexes.go      — Index + table stats from pg_stat_user_indexes
-internal/adapter/stats.go        — Database-level stats
+internal/adapter/postgres_slow_queries.go — pg_stat_statements queries
+internal/adapter/postgres_explain.go      — PostgreSQL EXPLAIN plan
+internal/adapter/postgres_indexes.go      — PostgreSQL index stats from pg_stat_user_indexes
+internal/adapter/postgres_stats.go        — PostgreSQL database-level stats
+internal/adapter/mysql.go        — MySQL adapter (Connect/Close)
+internal/adapter/mysql_slow_queries.go    — MySQL performance_schema queries
+internal/adapter/mysql_explain.go         — MySQL EXPLAIN FORMAT=JSON
+internal/adapter/mysql_indexes.go         — MySQL index stats from information_schema
+internal/adapter/mysql_stats.go           — MySQL database-level stats (SHOW GLOBAL STATUS)
+internal/adapter/mariadb.go      — MariaDB adapter (Connect/Close)
+internal/adapter/mariadb_slow_queries.go  — MariaDB performance_schema queries
+internal/adapter/mariadb_explain.go       — MariaDB EXPLAIN FORMAT=JSON
+internal/adapter/mariadb_indexes.go       — MariaDB index stats with JSON_ARRAYAGG
+internal/adapter/mariadb_stats.go         — MariaDB database-level stats
+internal/adapter/mysqlcompat/    — Shared helpers for MySQL/MariaDB
+internal/adapter/mysqlcompat/helpers.go   — DSN builder, EXPLAIN JSON parsing
 internal/api/router.go           — Chi router, CORS, SPA fallback
 internal/api/handlers/           — HTTP handlers (connection CRUD, queries, SSE, paste)
 internal/worker/scheduler.go     — Ticker-based worker with concurrency limit (10)

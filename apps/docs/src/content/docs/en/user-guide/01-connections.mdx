@@ -1,29 +1,33 @@
 ---
 title: "Managing Connections"
-description: "Add, edit, test, and delete PostgreSQL database connections"
+description: "Add, edit, test, and delete database connections for PostgreSQL, MySQL, and MariaDB"
 ---
 
-A connection tells DBSight which PostgreSQL database to monitor. You can add as many connections as you need — each one runs independently through the background worker.
+A connection tells DBSight which database to monitor. You can add as many connections as you need — each one runs independently through the background worker. DBSight supports PostgreSQL, MySQL, and MariaDB.
 
 ## Adding a Connection
 
 1. Click **Add Connection** in the left sidebar.
 2. Enter a **Name** — this is just a display label (e.g. `prod-replica`, `staging-db`).
-3. Enter the **DSN** (Data Source Name) for the target database.
-4. Click **Test Connection** to verify connectivity before saving.
-5. Click **Save**.
+3. Select your **Database Type** from the dropdown (PostgreSQL, MySQL, or MariaDB).
+4. Enter the **DSN** (Data Source Name) for the target database.
+   - You can toggle between **DSN** mode (paste a connection string) and **Form** mode (fill individual fields).
+5. Click **Test Connection** to verify connectivity before saving.
+6. Click **Save**.
 
 The connection appears in the sidebar immediately. The worker schedules its first metrics collection within one polling interval.
 
 ## DSN Format
 
-DBSight uses the standard PostgreSQL connection string format:
+### PostgreSQL
+
+Standard PostgreSQL connection string format:
 
 ```
 postgresql://user:password@host:port/dbname?sslmode=disable
 ```
 
-### Examples
+**Examples:**
 
 ```bash
 # Local database, no SSL
@@ -37,6 +41,50 @@ postgresql://appuser:secret@db.example.com:5432/production?sslmode=require&searc
 ```
 
 Use a read-only database user where possible. DBSight only needs `SELECT` access to `pg_stat_statements`, `pg_stat_user_indexes`, `pg_stat_user_tables`, and `pg_database`.
+
+### MySQL 5.7+ / 8.0+
+
+MySQL uses a different DSN format with the `go-sql-driver/mysql` driver:
+
+```
+user:password@tcp(host:port)/dbname?parseTime=true&timeout=10s
+```
+
+**Examples:**
+
+```bash
+# Local database
+root:password@tcp(localhost:3306)/mydb?parseTime=true&timeout=10s
+
+# Remote database with specific parameters
+appuser:secret@tcp(db.example.com:3306)/production?parseTime=true&timeout=10s&charset=utf8mb4
+```
+
+**Requirements:**
+- `performance_schema` must be enabled on the MySQL server
+- Use a read-only user with `SELECT` access to `performance_schema.*`, `information_schema.*`, and `SHOW GLOBAL STATUS`
+
+### MariaDB 10.x+
+
+MariaDB uses the same DSN format as MySQL:
+
+```
+user:password@tcp(host:port)/dbname?parseTime=true&timeout=10s
+```
+
+**Examples:**
+
+```bash
+# Local database
+root:password@tcp(localhost:3306)/mydb?parseTime=true&timeout=10s
+
+# Remote database
+appuser:secret@tcp(db.example.com:3306)/production?parseTime=true&timeout=10s
+```
+
+**Requirements:**
+- `performance_schema` must be enabled on the MariaDB server
+- Use a read-only user with `SELECT` access to `performance_schema.*`, `information_schema.*`, and `SHOW GLOBAL STATUS`
 
 ## Testing a Connection
 

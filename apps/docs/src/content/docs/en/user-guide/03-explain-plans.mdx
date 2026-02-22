@@ -1,9 +1,9 @@
 ---
 title: "EXPLAIN Plans"
-description: "Run and analyze PostgreSQL EXPLAIN plans for query optimization"
+description: "Run and analyze EXPLAIN plans for PostgreSQL, MySQL, and MariaDB"
 ---
 
-EXPLAIN plans show exactly how PostgreSQL intends to (or actually did) execute a query. DBSight lets you run EXPLAIN directly from the slow query list without leaving the dashboard.
+EXPLAIN plans show exactly how your database intends to (or actually did) execute a query. DBSight lets you run EXPLAIN directly from the slow query list without leaving the dashboard.
 
 ## How to Run an EXPLAIN
 
@@ -23,9 +23,35 @@ EXPLAIN plans show exactly how PostgreSQL intends to (or actually did) execute a
 
 Use **EXPLAIN** for a quick look at the planner's strategy without touching data. Use **EXPLAIN ANALYZE** when you need actual row counts and timing to diagnose plan estimation errors — but be aware it runs the query for real.
 
-## Safety
+## Database-Specific EXPLAIN Behavior
 
-DBSight wraps every EXPLAIN execution in a `SET TRANSACTION READ ONLY` transaction that is rolled back immediately after the plan is captured. This prevents accidental data modification even if a query somehow slips past normalization. Write operations (`INSERT`, `UPDATE`, `DELETE`) will error inside a read-only transaction, protecting your data.
+### PostgreSQL
+
+DBSight runs `EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS)` and wraps execution in a read-only transaction for safety. The output shows a unified JSON structure with cost estimation and actual execution data.
+
+**Safety:** Write operations (`INSERT`, `UPDATE`, `DELETE`) will error inside a read-only transaction, protecting your data.
+
+### MySQL 5.7+ / 8.0+
+
+MySQL supports two EXPLAIN output formats:
+
+- **EXPLAIN** — estimates only as JSON with `query_block` root
+- **EXPLAIN ANALYZE** — new in MySQL 8.0.18, returns TREE format (wrapped as JSON)
+
+DBSight handles both formats and detects which version you're running to choose the appropriate output format.
+
+**Note:** MySQL 8.0.18+ supports true `EXPLAIN ANALYZE` for actual execution plans.
+
+### MariaDB 10.x+
+
+MariaDB has its own EXPLAIN variants:
+
+- **EXPLAIN FORMAT=JSON** — estimates as flat `query_block` JSON structure
+- **ANALYZE FORMAT=JSON** — executes query and returns actual JSON plan
+
+DBSight automatically detects your MariaDB version and chooses the correct syntax.
+
+**Note:** MariaDB `ANALYZE FORMAT=JSON` is different from MySQL's tree format but still provides actual execution metrics.
 
 ## Reading the JSON Output
 

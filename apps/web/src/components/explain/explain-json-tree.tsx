@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { parseMariaDBExplain } from './mariadb-explain-parser'
+import { parseMySQLExplain } from './mysql-explain-parser'
 
-interface PlanNode {
+export interface PlanNode {
   'Node Type': string
   'Relation Name'?: string
   'Total Cost'?: number
@@ -15,14 +17,32 @@ interface PlanNode {
   [key: string]: unknown
 }
 
-export function ExplainJsonTree({ data }: { data: unknown }) {
-  // EXPLAIN FORMAT JSON returns an array with one element containing { Plan: ... }
+export function ExplainJsonTree({ data, dbType }: { data: unknown; dbType?: string }) {
+  // PG: array with Plan object
   if (Array.isArray(data)) {
     const root = (data[0] as { Plan?: PlanNode })?.Plan
     if (!root) return <p className="text-muted-foreground">No plan data found.</p>
     return <PlanNodeView node={root} depth={0} />
   }
-  // Direct plan node
+
+  // MySQL ANALYZE TREE: wrapped in JSON envelope {"format":"tree","text":"..."}
+  if ((data as Record<string, unknown>)?.format === 'tree') {
+    return (
+      <pre className="font-mono text-sm whitespace-pre-wrap p-3 bg-muted rounded-md">
+        {(data as { text: string }).text}
+      </pre>
+    )
+  }
+
+  // MySQL/MariaDB JSON: has query_block
+  if ((data as Record<string, unknown>)?.query_block) {
+    const parser = dbType === 'mariadb' ? parseMariaDBExplain : parseMySQLExplain
+    const root = parser(data)
+    if (!root) return <p className="text-muted-foreground">No plan data found.</p>
+    return <PlanNodeView node={root} depth={0} />
+  }
+
+  // Direct plan node (fallback)
   return <PlanNodeView node={data as PlanNode} depth={0} />
 }
 
@@ -30,7 +50,7 @@ function PlanNodeView({ node, depth }: { node: PlanNode; depth: number }) {
   const [expanded, setExpanded] = useState(true)
   const hasChildren = node.Plans && node.Plans.length > 0
   const isExpensive = (node['Total Cost'] ?? 0) > 1000
-  const isSeqScan = node['Node Type'] === 'Seq Scan'
+  const isFullScan = node['Node Type'] === 'Seq Scan' || node['Node Type'] === 'Full Table Scan'
   const rowMismatch =
     node['Plan Rows'] != null &&
     node['Actual Rows'] != null &&
@@ -43,7 +63,7 @@ function PlanNodeView({ node, depth }: { node: PlanNode; depth: number }) {
         className={cn(
           'flex flex-wrap items-center gap-x-2 py-1 cursor-pointer rounded px-1 hover:bg-muted/50 text-sm w-full text-left',
           isExpensive && 'text-destructive font-medium',
-          isSeqScan && 'text-yellow-600 dark:text-yellow-400',
+          isFullScan && 'text-yellow-600 dark:text-yellow-400',
         )}
         onClick={() => setExpanded((e) => !e)}
       >

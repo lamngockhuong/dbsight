@@ -45,17 +45,45 @@ type QueryOpts struct {
 }
 ```
 
-## Step-by-Step: Adding a MySQL Adapter
+## Real Examples: MySQL and MariaDB Adapters
+
+DBSight includes production implementations for MySQL and MariaDB. Here's how they're structured:
+
+### MySQL Adapter Structure
+
+- `internal/adapter/mysql.go` — Connection and core methods
+- `internal/adapter/mysql_slow_queries.go` — Queries `performance_schema.events_statements_summary_by_digest`
+- `internal/adapter/mysql_explain.go` — Handles `EXPLAIN FORMAT=JSON` and `EXPLAIN ANALYZE TREE FORMAT=JSON`
+- `internal/adapter/mysql_indexes.go` — Queries `information_schema.statistics` with metrics from `performance_schema`
+- `internal/adapter/mysql_stats.go` — Database-level stats from `SHOW GLOBAL STATUS`
+- `internal/adapter/mysql_explain_test.go` — Tests for EXPLAIN output parsing
+
+### MariaDB Adapter Structure
+
+- `internal/adapter/mariadb.go` — Connection and core methods
+- `internal/adapter/mariadb_slow_queries.go` — Queries `performance_schema` (same as MySQL, but handles missing fields)
+- `internal/adapter/mariadb_explain.go` — Handles `EXPLAIN FORMAT=JSON` and `ANALYZE FORMAT=JSON`
+- `internal/adapter/mariadb_indexes.go` — JSON-based index queries with `JSON_ARRAYAGG`
+- `internal/adapter/mariadb_stats.go` — Database-level stats
+- `internal/adapter/mariadb_explain_test.go` — Tests for MariaDB-specific EXPLAIN formats
+
+### Shared Utilities
+
+Both adapters use helpers from `internal/adapter/mysqlcompat/`:
+
+- `helpers.go` — DSN builder, EXPLAIN JSON parsing, performance_schema conversions (picoseconds to ms)
+
+## Step-by-Step: Adding a New Adapter (e.g., SQLite)
 
 ### 1. Add the driver dependency
 
 ```bash
-go get github.com/go-sql-driver/mysql
+go get github.com/mattn/go-sqlite3
 ```
 
-### 2. Create the adapter file
+### 2. Create the adapter files
 
-Create `internal/adapter/mysql.go`:
+Create `internal/adapter/sqlite.go`:
 
 ```go
 package adapter
@@ -65,69 +93,68 @@ import (
     "database/sql"
     "fmt"
 
-    _ "github.com/go-sql-driver/mysql"
+    _ "github.com/mattn/go-sqlite3"
     "github.com/lamngockhuong/dbsight/internal/models"
 )
 
-type MySQLAdapter struct {
+type SQLiteAdapter struct {
     db *sql.DB
 }
 
-func NewMySQLAdapter() *MySQLAdapter {
-    return &MySQLAdapter{}
+func NewSQLiteAdapter() *SQLiteAdapter {
+    return &SQLiteAdapter{}
 }
 
-func (a *MySQLAdapter) Connect(ctx context.Context, dsn string) error {
-    db, err := sql.Open("mysql", dsn)
+func (a *SQLiteAdapter) Connect(ctx context.Context, dsn string) error {
+    db, err := sql.Open("sqlite3", dsn)
     if err != nil {
-        return fmt.Errorf("mysql open: %w", err)
+        return fmt.Errorf("sqlite open: %w", err)
     }
     if err := db.PingContext(ctx); err != nil {
-        return fmt.Errorf("mysql ping: %w", err)
+        return fmt.Errorf("sqlite ping: %w", err)
     }
     a.db = db
     return nil
 }
 
-func (a *MySQLAdapter) Close() error {
+func (a *SQLiteAdapter) Close() error {
     if a.db != nil {
         return a.db.Close()
     }
     return nil
 }
 
-func (a *MySQLAdapter) GetSlowQueries(ctx context.Context, opts QueryOpts) ([]models.SlowQuery, error) {
-    // Query performance_schema.events_statements_summary_by_digest
-    // Map columns to models.SlowQuery fields
+func (a *SQLiteAdapter) GetSlowQueries(ctx context.Context, opts QueryOpts) ([]models.SlowQuery, error) {
+    // Query sqlite_stat1 or custom logging table
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetExplainPlan(ctx context.Context, query string, opts QueryOpts) (*models.ExplainPlan, error) {
-    // Use EXPLAIN FORMAT=JSON ...
+func (a *SQLiteAdapter) GetExplainPlan(ctx context.Context, query string, opts QueryOpts) (*models.ExplainPlan, error) {
+    // Use EXPLAIN QUERY PLAN
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetIndexStats(ctx context.Context) ([]models.IndexStat, error) {
-    // Query information_schema.statistics + sys.schema_index_statistics
+func (a *SQLiteAdapter) GetIndexStats(ctx context.Context) ([]models.IndexStat, error) {
+    // Query sqlite_master
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetTableStats(ctx context.Context) ([]models.TableStat, error) {
+func (a *SQLiteAdapter) GetTableStats(ctx context.Context) ([]models.TableStat, error) {
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error) {
+func (a *SQLiteAdapter) GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error) {
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetDatabaseStats(ctx context.Context) (*models.DatabaseStats, error) {
+func (a *SQLiteAdapter) GetDatabaseStats(ctx context.Context) (*models.DatabaseStats, error) {
     return nil, fmt.Errorf("not yet implemented")
 }
 ```
 
 ### 3. Register in the factory
 
-Edit `internal/adapter/adapter.go`, add the `"mysql"` case:
+Edit `internal/adapter/adapter.go`, add the `"sqlite"` case:
 
 ```go
 func NewAdapter(dbType string) (DBAnalyzer, error) {
@@ -136,6 +163,10 @@ func NewAdapter(dbType string) (DBAnalyzer, error) {
         return NewPostgresAdapter(), nil
     case "mysql":
         return NewMySQLAdapter(), nil
+    case "mariadb":
+        return NewMariaDBAdapter(), nil
+    case "sqlite":
+        return NewSQLiteAdapter(), nil
     default:
         return nil, fmt.Errorf("unsupported db type: %s", dbType)
     }
@@ -144,7 +175,16 @@ func NewAdapter(dbType string) (DBAnalyzer, error) {
 
 ### 4. Update the frontend connection form
 
-In `apps/web/src/components/connections/`, add `"mysql"` to the `db_type` select options so users can choose it when creating a connection.
+In `apps/web/src/components/connections/connection-form.tsx`, add `"sqlite"` to the database type options:
+
+```typescript
+const dbTypeOptions = [
+  { value: "postgres", label: "PostgreSQL" },
+  { value: "mysql", label: "MySQL" },
+  { value: "mariadb", label: "MariaDB" },
+  { value: "sqlite", label: "SQLite" },
+]
+```
 
 ## Testing Your Adapter
 
@@ -166,8 +206,17 @@ func TestMySQLAdapter_Connect(t *testing.T) {
 Run with:
 
 ```bash
-TEST_MYSQL_DSN="user:password@tcp(localhost:3306)/testdb" go test ./internal/adapter/ -v -run TestMySQL
+TEST_SQLITE_DSN="file::memory:?cache=shared" go test ./internal/adapter/ -v -run TestSQLite
 ```
+
+## Learning from MySQL/MariaDB Implementations
+
+For detailed reference, study the MySQL and MariaDB adapter implementations:
+
+1. **Performance schema conversion**: See how MySQL's picosecond timers are converted to milliseconds in `internal/adapter/mysql_slow_queries.go`
+2. **EXPLAIN parsing**: Both MySQL and MariaDB have custom JSON parsing logic in their `*_explain.go` files
+3. **Duplicate index detection**: MariaDB's `mariadb_indexes.go` uses `JSON_ARRAYAGG` for grouping — a useful pattern for databases without `array_agg`
+4. **Tests**: Both `mysql_explain_test.go` and `mariadb_explain_test.go` demonstrate how to test JSON parsing with real output examples
 
 ## PR Checklist
 
@@ -176,6 +225,8 @@ Before opening a pull request for a new adapter:
 - [ ] All 8 interface methods implemented (no permanent `fmt.Errorf("not yet implemented")` stubs)
 - [ ] Unit tests cover `Connect`, `Close`, and at least `GetSlowQueries`
 - [ ] Integration test with a real database instance (skipped when env var absent)
-- [ ] Factory case added in `NewAdapter`
-- [ ] Frontend `db_type` option added
-- [ ] Docs page updated or added under `apps/docs/`
+- [ ] Factory case added in `NewAdapter()` in `internal/adapter/adapter.go`
+- [ ] Frontend database type option added in `connection-form.tsx`
+- [ ] Documentation added or updated under `apps/docs/` with database-specific setup instructions
+- [ ] SQL queries verified to work with the target database version
+- [ ] DSN format documented with examples

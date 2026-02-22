@@ -1,17 +1,24 @@
 ---
 title: "Slow Query Analysis"
-description: "Identify and analyze slow PostgreSQL queries with pg_stat_statements"
+description: "Identify and analyze slow queries for PostgreSQL, MySQL, and MariaDB"
 ---
 
 The slow query table is the core view in DBSight. It surfaces the queries consuming the most time on your database, ranked by total execution cost.
 
 ## How It Works
 
-DBSight reads from the `pg_stat_statements` extension on the monitored database. This extension accumulates cumulative statistics — total calls, total time, rows returned — for every normalized query fingerprint PostgreSQL has seen since the last reset.
+DBSight reads from database-specific statistics tables:
+
+- **PostgreSQL:** `pg_stat_statements` extension
+- **MySQL/MariaDB:** `performance_schema.events_statements_summary_by_digest`
+
+These tables accumulate cumulative statistics — total calls, total time, rows returned — for every normalized query fingerprint your database has seen since the last reset.
 
 The background worker collects a snapshot on each polling interval. Between snapshots, DBSight computes **deltas** so you can see which queries have gotten worse since the last collection pass, not just which queries are worst overall.
 
-## Prerequisite: pg_stat_statements
+## Database-Specific Setup
+
+### PostgreSQL: pg_stat_statements
 
 The monitored database must have `pg_stat_statements` installed and loaded:
 
@@ -23,7 +30,41 @@ SELECT * FROM pg_stat_statements LIMIT 1;
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 ```
 
-You also need to add it to `shared_preload_libraries` in `postgresql.conf` and restart PostgreSQL if it has not been loaded before.
+Add it to `shared_preload_libraries` in `postgresql.conf` and restart PostgreSQL if needed.
+
+### MySQL 5.7+ / 8.0+: performance_schema
+
+Ensure `performance_schema` is enabled (usually on by default):
+
+```sql
+-- Check if it is enabled
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Should return 'ON'
+
+-- If disabled, add to my.cnf and restart:
+[mysqld]
+performance_schema = ON
+
+-- Timer conversion: MySQL stores times in picoseconds
+-- DBSight converts: picoseconds / 1e9 = milliseconds
+```
+
+### MariaDB 10.x+: performance_schema
+
+Enable `performance_schema` in the configuration:
+
+```sql
+-- Check if it is enabled
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Should return 'ON'
+
+-- If disabled, add to my.cnf and restart:
+[mysqld]
+performance_schema = ON
+
+-- Note: MariaDB lacks some fields (QUANTILE_95, FIRST_SEEN, LAST_SEEN)
+-- but basic metrics work the same way as MySQL
+```
 
 ## Query Table Columns
 

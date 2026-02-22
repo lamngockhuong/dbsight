@@ -48,11 +48,17 @@ The backend runs a background metrics collector (worker goroutine) that polls co
                          ▼               ▼
                    ┌──────────────────────────────┐
                    │ Target Databases             │
-                   │ (PostgreSQL instances)       │
+                   │ PostgreSQL, MySQL, MariaDB   │
                    │                              │
-                   │ pg_stat_statements           │
-                   │ pg_stat_indexes              │
-                   │ Information Schema           │
+                   │ PostgreSQL:                  │
+                   │  - pg_stat_statements        │
+                   │  - pg_stat_indexes           │
+                   │  - information_schema        │
+                   │                              │
+                   │ MySQL/MariaDB:               │
+                   │  - performance_schema        │
+                   │  - information_schema        │
+                   │  - SHOW GLOBAL STATUS        │
                    └──────────────────────────────┘
                          ▲
                          │ Worker Goroutine
@@ -137,12 +143,32 @@ type DBAnalyzer interface {
 }
 ```
 
-**PostgreSQL Adapter** (`internal/adapter/postgres.go`):
+**PostgreSQL Adapter** (`internal/adapter/postgres*.go`):
 
 - Queries `pg_stat_statements` for slow query detection
 - Runs read-only EXPLAIN ANALYZE for execution plans
 - Collects `pg_stat_indexes` for index statistics
 - Queries `information_schema` for table statistics
+
+**MySQL Adapter** (`internal/adapter/mysql*.go`):
+
+- Queries `performance_schema.events_statements_summary_by_digest` for slow query detection
+- Runs `EXPLAIN FORMAT=JSON` and `EXPLAIN ANALYZE TREE FORMAT=JSON` (MySQL 8.0.18+)
+- Collects `information_schema.statistics` with metrics from `performance_schema`
+- Queries `SHOW GLOBAL STATUS` for database-level statistics
+
+**MariaDB Adapter** (`internal/adapter/mariadb*.go`):
+
+- Queries `performance_schema` (same table as MySQL, but handles missing fields)
+- Runs `EXPLAIN FORMAT=JSON` and `ANALYZE FORMAT=JSON`
+- Uses JSON-based queries with `JSON_ARRAYAGG` for index detection
+- Queries `SHOW GLOBAL STATUS` for database-level statistics
+
+**Shared Utilities** (`internal/adapter/mysqlcompat/`):
+
+- DSN builder for MySQL/MariaDB connection strings
+- EXPLAIN JSON parsing helpers for both adapters
+- Performance schema time conversion (picoseconds → milliseconds)
 
 #### API Handler (`internal/api`)
 

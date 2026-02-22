@@ -4,7 +4,7 @@
 
 This roadmap tracks the progression from MVP completion through production-ready features and enterprise capabilities. Each phase builds on the previous, maintaining backward compatibility where possible.
 
-**Current Status:** Phases 1–10 Complete — **Production Ready**
+**Current Status:** Phases 1–11 Complete — **Multi-Database Support Ready**
 
 ## Phase 1-7: MVP (Completed)
 
@@ -117,7 +117,45 @@ Returns: 200 {"status":"ok"} | 503 {"status":"error","error":"..."}
 
 ---
 
-## Phase 11: Authentication & RBAC (Post-MVP)
+## Phase 11: MySQL & MariaDB Support (Complete)
+
+**Status:** ✅ Complete | **Priority:** High | **Duration:** Completed 2026-02-22
+
+### Delivered
+
+- **Adapters:** MySQL and MariaDB implementations of `DBAnalyzer` interface
+  - `internal/adapter/mysql.go`, `mysql_slow_queries.go`, `mysql_explain.go`, `mysql_indexes.go`, `mysql_stats.go`
+  - `internal/adapter/mariadb.go`, `mariadb_slow_queries.go`, `mariadb_explain.go`, `mariadb_indexes.go`, `mariadb_stats.go`
+  - Shared utilities: `internal/adapter/mysqlcompat/helpers.go` (DSN builder, EXPLAIN JSON parsing)
+- **Query Detection:**
+  - MySQL/MariaDB: `performance_schema.events_statements_summary_by_digest` with picosecond-to-millisecond conversion
+  - Supports MySQL 5.7+/8.0+ and MariaDB 10.x+ versions
+- **EXPLAIN Plans:**
+  - MySQL: `EXPLAIN FORMAT=JSON` and `EXPLAIN ANALYZE TREE FORMAT=JSON` (8.0.18+)
+  - MariaDB: `EXPLAIN FORMAT=JSON` and `ANALYZE FORMAT=JSON`
+  - Auto-detection of database version for correct syntax
+- **Index Analysis:**
+  - MySQL: queries `information_schema.statistics` with performance_schema metrics
+  - MariaDB: JSON-based queries with `JSON_ARRAYAGG` for compatibility
+- **Frontend:**
+  - Connection form: database type selector (PostgreSQL/MySQL/MariaDB)
+  - DSN builder with per-database format guidance
+  - EXPLAIN JSON tree: automatic format detection for MySQL/MariaDB
+  - New files: `dsn-builder.ts`, `mysql-explain-parser.ts`, `mariadb-explain-parser.ts`
+- **Testing:**
+  - Unit tests for EXPLAIN JSON parsing: `mysql_explain_test.go`, `mariadb_explain_test.go`
+  - Integration tests with real MySQL/MariaDB instances
+
+### Key Metrics
+
+- **Adapters Added:** 2 (MySQL, MariaDB) with 5 files each
+- **Shared Code:** 1 package with helpers for both adapters
+- **Test Coverage:** EXPLAIN parsing verified for both formats
+- **DSN Formats:** Documented with examples for all 3 DB types
+
+---
+
+## Phase 12: Authentication & RBAC (Post-MVP)
 
 **Status:** 🔮 Future | **Priority:** Medium | **Estimated Duration:** 6 days
 
@@ -142,7 +180,7 @@ Secure multi-user access with role-based permissions and audit logging.
 
 ---
 
-## Phase 12: Advanced Metrics (Post-MVP)
+## Phase 13: Advanced Metrics (Post-MVP)
 
 **Status:** 🔮 Future | **Priority:** Low | **Estimated Duration:** 8 days
 
@@ -169,10 +207,11 @@ Deeper database health monitoring beyond slow queries.
 | 9     | ✅ Complete | —        | High     | fullstack-dev | 2026-02-21 | 2026-02-22 |
 | 10    | ✅ Complete | —        | High     | devops-eng    | 2026-02-21 | 2026-02-22 |
 | 10.5  | ✅ Complete | —        | Medium   | devops-eng    | 2026-02-22 | 2026-02-22 |
-| 11    | 🔮 Future   | 6 days   | Medium   | fullstack-dev | TBD        | TBD        |
-| 12    | 🔮 Future   | 8 days   | Low      | fullstack-dev | TBD        | TBD        |
+| 11    | ✅ Complete | —        | High     | fullstack-dev | 2026-02-22 | 2026-02-22 |
+| 12    | 🔮 Future   | 6 days   | Medium   | fullstack-dev | TBD        | TBD        |
+| 13    | 🔮 Future   | 8 days   | Low      | fullstack-dev | TBD        | TBD        |
 
-**Phases 8–10.5 completed 2026-02-22 — project is production-ready with public documentation site.**
+**Phases 1–11 completed 2026-02-22 — project now supports PostgreSQL, MySQL, and MariaDB with multi-database monitoring.**
 
 ## Success Metrics by Phase
 
@@ -193,7 +232,16 @@ Deeper database health monitoring beyond slow queries.
 - ✅ Monorepo (pnpm workspaces): `apps/web/` + `apps/docs/` (Starlight, EN+VI)
 - ✅ GitHub Pages deployment via `deploy-docs.yml` → `dbsight.khuong.dev`
 
-### Phase 11-12 (Enterprise Ready)
+### Phase 11 (Multi-Database Support — Complete)
+
+- ✅ MySQL 5.7+/8.0+ adapter with performance_schema slow query detection
+- ✅ MariaDB 10.x+ adapter with performance_schema and JSON-based queries
+- ✅ Per-database EXPLAIN FORMAT support (PostgreSQL JSON, MySQL/MariaDB JSON)
+- ✅ Shared DSN builder and EXPLAIN parsers in `mysqlcompat/` package
+- ✅ Frontend database type selector and DSN format guidance
+- ✅ Documentation for all 3 DB types with setup prerequisites
+
+### Phase 12-13 (Enterprise Ready)
 
 - Support 100+ concurrent users
 - RBAC with 3+ predefined roles
@@ -264,6 +312,6 @@ Deeper database health monitoring beyond slow queries.
 
 ---
 
-**Document Version:** 1.2
+**Document Version:** 1.3
 **Last Updated:** 2026-02-22
-**Next Review:** After Phase 11 planning
+**Next Review:** After Phase 12 planning

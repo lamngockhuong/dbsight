@@ -62,12 +62,24 @@ Navigate to **http://localhost:42198** in your browser. The connections list wil
 
 1. Click **Add Connection** in the left sidebar.
 2. Enter a descriptive **Name** (e.g. `production-replica`).
-3. Paste your PostgreSQL **DSN**:
+3. Select your database type from the **Database Type** dropdown:
+   - **PostgreSQL** — standard connection string format
+   - **MySQL** — 5.7+ or 8.0+ with performance_schema enabled
+   - **MariaDB** — 10.x+ with performance_schema enabled
+4. Paste the appropriate **DSN** for your database:
+
+   **PostgreSQL:**
    ```
    postgresql://user:password@localhost:5432/mydb?sslmode=disable
    ```
-4. Click **Test Connection** to verify DBSight can reach the database.
-5. Click **Save**.
+
+   **MySQL/MariaDB:**
+   ```
+   user:password@tcp(localhost:3306)/mydb?parseTime=true&timeout=10s
+   ```
+
+5. Click **Test Connection** to verify DBSight can reach the database.
+6. Click **Save**.
 
 The connection appears in the sidebar. DBSight's background worker immediately schedules a metrics collection pass.
 

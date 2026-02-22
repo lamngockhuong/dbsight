@@ -1,22 +1,24 @@
 # DBSight
 
-Database performance analyzer for PostgreSQL. Monitor slow queries, visualize EXPLAIN plans, and track index usage — all from a single binary.
+Database performance analyzer for PostgreSQL, MySQL, and MariaDB. Monitor slow queries, visualize EXPLAIN plans, and track index usage — all from a single binary.
 
 ![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-4169E1?logo=postgresql&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-5.7+-005A87?logo=mysql&logoColor=white)
+![MariaDB](https://img.shields.io/badge/MariaDB-10.x+-C0765F?logo=mariadb&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 **Documentation:** [dbsight.khuong.dev](https://dbsight.khuong.dev)
 
 ## Features
 
-- **Slow Query Detection** — polls `pg_stat_statements` every 30s, ranks by total execution time with delta tracking
+- **Slow Query Detection** — polls `pg_stat_statements` (PostgreSQL), `performance_schema` (MySQL/MariaDB) every 30s, ranks by total execution time with delta tracking
 - **Live Dashboard** — real-time updates via Server-Sent Events (SSE), no page refresh needed
-- **EXPLAIN Plans** — run EXPLAIN (ANALYZE, BUFFERS) safely in read-only transactions
+- **EXPLAIN Plans** — run EXPLAIN safely with per-database format support (PostgreSQL JSON, MySQL FORMAT=JSON, MariaDB ANALYZE FORMAT=JSON)
 - **Index Analysis** — identify unused indexes and missing index opportunities
 - **Paste Mode** — analyze slow query logs offline without a live database connection
-- **Multi-Connection** — monitor multiple PostgreSQL instances from one dashboard
+- **Multi-Database** — monitor multiple PostgreSQL, MySQL, and MariaDB instances from one dashboard
 - **Secure** — DSN credentials encrypted with AES-256-GCM, never exposed via API
 
 ## Quick Start
@@ -25,7 +27,10 @@ Database performance analyzer for PostgreSQL. Monitor slow queries, visualize EX
 
 - Go 1.26+
 - Node.js 20+
-- PostgreSQL 14+ (with `pg_stat_statements` extension enabled)
+- One or more supported databases:
+  - PostgreSQL 14+ (with `pg_stat_statements` extension enabled)
+  - MySQL 5.7+ or 8.0+ (with `performance_schema` enabled)
+  - MariaDB 10.x+ (with `performance_schema` enabled)
 - Docker & Docker Compose (optional)
 
 ### Using Docker Compose
@@ -141,6 +146,8 @@ The single binary serves the API, background worker, and React SPA. The worker c
 
 ## Target Database Setup
 
+### PostgreSQL
+
 Enable `pg_stat_statements` on the databases you want to monitor:
 
 ```sql
@@ -149,6 +156,34 @@ shared_preload_libraries = 'pg_stat_statements'
 
 -- Then run:
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+```
+
+### MySQL 5.7+ / 8.0+
+
+Ensure `performance_schema` is enabled (usually on by default):
+
+```sql
+-- Check if it is enabled
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Should return 'ON'
+
+-- If disabled, add to my.cnf and restart:
+[mysqld]
+performance_schema = ON
+```
+
+### MariaDB 10.x+
+
+Enable `performance_schema` in the configuration:
+
+```sql
+-- Check if it is enabled
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Should return 'ON'
+
+-- If disabled, add to my.cnf and restart:
+[mysqld]
+performance_schema = ON
 ```
 
 ## API

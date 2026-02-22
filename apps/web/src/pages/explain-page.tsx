@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { api } from '@/api/client'
 import { ExplainJsonTree } from '@/components/explain/explain-json-tree'
@@ -12,14 +12,26 @@ export function ExplainPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
   const connId = parseInt(id ?? '0', 10)
-  const initialQuery = (location.state as { query?: string })?.query ?? ''
+  const locationState = location.state as { query?: string; db_type?: string } | null
+  const initialQuery = locationState?.query ?? ''
 
+  const [dbType, setDbType] = useState<string>(locationState?.db_type ?? 'postgres')
   const [query, setQuery] = useState(initialQuery)
   const [pasteJSON, setPasteJSON] = useState('')
   const [analyzeMode, setAnalyzeMode] = useState(false)
   const [plan, setPlan] = useState<unknown>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Fetch db_type from connection if not passed via route state
+  useEffect(() => {
+    if (!locationState?.db_type && connId) {
+      api.connections
+        .get(connId)
+        .then((c) => setDbType(c.db_type))
+        .catch(() => {})
+    }
+  }, [connId, locationState?.db_type])
 
   const runExplain = async () => {
     setLoading(true)
@@ -112,7 +124,7 @@ export function ExplainPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ExplainJsonTree data={plan} />
+            <ExplainJsonTree data={plan} dbType={dbType} />
           </CardContent>
         </Card>
       )}

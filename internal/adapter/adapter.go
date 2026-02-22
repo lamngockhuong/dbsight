@@ -31,6 +31,10 @@ func NewAdapter(dbType string) (DBAnalyzer, error) {
 	switch dbType {
 	case "postgres":
 		return NewPostgresAdapter(), nil
+	case "mysql":
+		return NewMySQLAdapter(), nil
+	case "mariadb":
+		return NewMariaDBAdapter(), nil
 	default:
 		return nil, fmt.Errorf("unsupported db type: %s", dbType)
 	}

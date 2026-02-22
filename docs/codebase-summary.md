@@ -51,12 +51,30 @@ dbsight/
 │   │   └── migrate.go               # Migration runner
 │   │
 │   ├── adapter/                     # Database analyzer interface
-│   │   ├── adapter.go               # Interface + factory
-│   │   ├── postgres.go              # PostgreSQL queries
-│   │   ├── slow_queries.go          # pg_stat_statements
-│   │   ├── explain.go               # EXPLAIN ANALYZE parsing
-│   │   ├── indexes.go               # pg_stat_indexes
-│   │   └── stats.go                 # Table/database statistics
+│   │   ├── adapter.go               # Interface + factory (PostgreSQL, MySQL, MariaDB)
+│   │   │
+│   │   ├── postgres.go              # PostgreSQL adapter
+│   │   ├── postgres_slow_queries.go # pg_stat_statements queries
+│   │   ├── postgres_explain.go      # PostgreSQL EXPLAIN JSON parsing
+│   │   ├── postgres_indexes.go      # pg_stat_user_indexes stats
+│   │   ├── postgres_stats.go        # Database-level stats
+│   │   │
+│   │   ├── mysql.go                 # MySQL adapter (5.7+/8.0+)
+│   │   ├── mysql_slow_queries.go    # performance_schema.events_statements_summary_by_digest
+│   │   ├── mysql_explain.go         # EXPLAIN FORMAT=JSON and TREE parsing
+│   │   ├── mysql_explain_test.go    # EXPLAIN JSON format tests
+│   │   ├── mysql_indexes.go         # information_schema.statistics queries
+│   │   ├── mysql_stats.go           # SHOW GLOBAL STATUS queries
+│   │   │
+│   │   ├── mariadb.go               # MariaDB adapter (10.x+)
+│   │   ├── mariadb_slow_queries.go  # performance_schema queries
+│   │   ├── mariadb_explain.go       # EXPLAIN FORMAT=JSON and ANALYZE FORMAT=JSON
+│   │   ├── mariadb_explain_test.go  # MariaDB EXPLAIN format tests
+│   │   ├── mariadb_indexes.go       # JSON-based index queries
+│   │   ├── mariadb_stats.go         # SHOW GLOBAL STATUS queries
+│   │   │
+│   │   └── mysqlcompat/             # Shared utilities for MySQL/MariaDB
+│   │       └── helpers.go           # DSN builder, EXPLAIN JSON parsing, picosecond conversion
 │   │
 │   ├── api/                         # HTTP server
 │   │   ├── router.go                # Chi route registration + /healthz
@@ -127,12 +145,37 @@ dbsight/
 
 ### Database Analysis (Adapter Pattern)
 
-- **internal/adapter/adapter.go**: Defines DBAnalyzer interface (GetSlowQueries, GetExplainPlan, GetIndexStats, GetTableStats, GetDatabaseStats). Factory function returns appropriate adapter.
-- **internal/adapter/postgres.go**: Routes PostgreSQL queries; imports submodules for specific metric types.
-- **internal/adapter/slow_queries.go**: Queries pg_stat_statements, parses results into SlowQuery structs.
-- **internal/adapter/explain.go**: Executes EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) in read-only transaction; parses JSON response.
-- **internal/adapter/indexes.go**: Queries pg_stat_indexes, pg_stat_user_indexes for usage stats.
-- **internal/adapter/stats.go**: Queries information_schema for table stats, pg_database for database-wide metrics.
+- **internal/adapter/adapter.go**: Defines DBAnalyzer interface (GetSlowQueries, GetExplainPlan, GetIndexStats, GetTableStats, GetDatabaseStats, GetDuplicateIndexes). Factory function returns correct implementation (PostgreSQL, MySQL, MariaDB).
+
+#### PostgreSQL Adapter
+
+- **internal/adapter/postgres.go**: PostgreSQL adapter entry point.
+- **internal/adapter/postgres_slow_queries.go**: Queries pg_stat_statements, parses results into SlowQuery structs.
+- **internal/adapter/postgres_explain.go**: Executes EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) in read-only transaction; parses JSON response.
+- **internal/adapter/postgres_indexes.go**: Queries pg_stat_indexes, pg_stat_user_indexes for usage stats.
+- **internal/adapter/postgres_stats.go**: Queries information_schema for table stats, pg_database for database-wide metrics.
+
+#### MySQL 5.7+/8.0+ Adapter
+
+- **internal/adapter/mysql.go**: MySQL adapter entry point with performance_schema validation.
+- **internal/adapter/mysql_slow_queries.go**: Queries `performance_schema.events_statements_summary_by_digest`; converts picoseconds to milliseconds.
+- **internal/adapter/mysql_explain.go**: Handles `EXPLAIN FORMAT=JSON` and `EXPLAIN ANALYZE TREE FORMAT=JSON` (MySQL 8.0.18+).
+- **internal/adapter/mysql_explain_test.go**: Tests for both JSON formats.
+- **internal/adapter/mysql_indexes.go**: Queries `information_schema.statistics` with performance_schema metrics.
+- **internal/adapter/mysql_stats.go**: Queries `SHOW GLOBAL STATUS` for database-level metrics.
+
+#### MariaDB 10.x+ Adapter
+
+- **internal/adapter/mariadb.go**: MariaDB adapter entry point.
+- **internal/adapter/mariadb_slow_queries.go**: Queries `performance_schema` (same as MySQL but handles missing fields).
+- **internal/adapter/mariadb_explain.go**: Handles `EXPLAIN FORMAT=JSON` and `ANALYZE FORMAT=JSON`.
+- **internal/adapter/mariadb_explain_test.go**: Tests for MariaDB-specific formats.
+- **internal/adapter/mariadb_indexes.go**: JSON-based index queries with `JSON_ARRAYAGG` for compatibility.
+- **internal/adapter/mariadb_stats.go**: Queries `SHOW GLOBAL STATUS`.
+
+#### Shared Utilities
+
+- **internal/adapter/mysqlcompat/helpers.go**: DSN builder, EXPLAIN JSON parsing, performance_schema timer conversion (picoseconds → ms).
 
 ### HTTP API
 
@@ -161,6 +204,7 @@ dbsight/
 #### API Client
 
 - **apps/web/src/api/client.ts**: Fetch-based API wrapper. Methods: getConnections, createConnection, testConnection, getQueries, getQueryHistory, explainQuery, etc.
+- **apps/web/src/api/dsn-builder.ts**: Per-database DSN builder with form field validation. Returns formatted connection string for PostgreSQL, MySQL, MariaDB.
 
 #### Hooks
 
@@ -174,11 +218,13 @@ dbsight/
 - **apps/web/src/components/layout/layout.tsx**: Main shell with sidebar + content area.
 - **apps/web/src/components/layout/sidebar.tsx**: Navigation links to pages.
 - **apps/web/src/components/connections/connection-list.tsx**: Table of registered connections with test/edit/delete buttons.
-- **apps/web/src/components/connections/connection-form.tsx**: Form to create/edit connection (name, host, port, database, user, password).
+- **apps/web/src/components/connections/connection-form.tsx**: Form to create/edit connection. Database type selector (PostgreSQL, MySQL, MariaDB), toggle between DSN and form field modes, uses dsn-builder.ts.
 - **apps/web/src/components/queries/slow-query-table.tsx**: TanStack Table v8 with sortable/filterable columns. Displays query text, calls, total time, delta.
 - **apps/web/src/components/queries/query-detail-drawer.tsx**: Side panel showing full query text, execution stats, EXPLAIN plan if available.
 - **apps/web/src/components/queries/query-sparkline.tsx**: Recharts mini line chart showing execution time trend.
-- **apps/web/src/components/explain/explain-json-tree.tsx**: Collapsible JSON tree renderer for EXPLAIN plan output. Annotates costs, highlights sequential scans and row estimate mismatches. (Phase 08)
+- **apps/web/src/components/explain/explain-json-tree.tsx**: Collapsible JSON tree renderer for EXPLAIN plan output. Auto-detects PostgreSQL, MySQL, or MariaDB format. Annotates costs, highlights sequential scans and row estimate mismatches. (Phase 08)
+- **apps/web/src/utils/mysql-explain-parser.ts**: Parses MySQL `EXPLAIN FORMAT=JSON` and `EXPLAIN ANALYZE TREE FORMAT=JSON` output.
+- **apps/web/src/utils/mariadb-explain-parser.ts**: Parses MariaDB `EXPLAIN FORMAT=JSON` and `ANALYZE FORMAT=JSON` output.
 - **apps/web/src/components/indexes/recommendations-list.tsx**: Renders Recommendation list with severity badges and copyable SQL. (Phase 09)
 
 #### Pages

@@ -16,13 +16,16 @@ flowchart LR
     end
 
     PG_Target["Target PostgreSQL\n(pg_stat_statements)"]
-    PG_Meta["Metadata DB\n(connections, snapshots)"]
+    MySQL_Target["Target MySQL/MariaDB\n(performance_schema)"]
+    PG_Meta["Metadata DB\n(PostgreSQL)"]
     Browser["Browser"]
 
     Worker -- "pg_stat_statements\nqueries" --> PG_Target
+    Worker -- "performance_schema\nqueries" --> MySQL_Target
     Worker -- "save snapshots" --> PG_Meta
     API -- "read/write connections\n& snapshots" --> PG_Meta
     API -- "EXPLAIN, index stats" --> PG_Target
+    API -- "EXPLAIN, index stats" --> MySQL_Target
     Browser -- "REST + SSE" --> API
     Browser -- "static assets" --> SPA
 ```
@@ -57,7 +60,7 @@ The entire application — API, worker, and frontend — compiles into one binar
 
 ### Adapter Pattern
 
-All database-specific logic lives behind the `DBAnalyzer` interface in `internal/adapter/`. The factory function `NewAdapter(dbType string)` returns the correct implementation. Adding MySQL or SQLite support means creating a new file that satisfies the interface — no changes to the API or worker.
+All database-specific logic lives behind the `DBAnalyzer` interface in `internal/adapter/`. The factory function `NewAdapter(dbType string)` returns the correct implementation (PostgreSQL, MySQL, or MariaDB). Adding new database types means creating adapter files that satisfy the interface — no changes to the API or worker.
 
 ### AES-256-GCM Encryption
 
