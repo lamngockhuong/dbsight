@@ -35,11 +35,13 @@ dbsight/
 │   │   └── stats.go                 # Table/database statistics
 │   │
 │   ├── api/                         # HTTP server
-│   │   ├── router.go                # Chi route registration
+│   │   ├── router.go                # Chi route registration + /healthz
 │   │   ├── app.go                   # App struct (dependency holder)
 │   │   ├── handlers/                # Endpoint handlers
 │   │   │   ├── connection.go        # Connection CRUD
 │   │   │   ├── queries.go           # Query endpoints + SSE
+│   │   │   ├── explain.go           # RunExplain handler (Phase 08)
+│   │   │   ├── indexes.go           # GetIndexAnalysis + computeRecommendations (Phase 09)
 │   │   │   ├── paste.go             # Slow log parsing
 │   │   │   └── handler.go           # Common utilities
 │   │   └── middleware/              # HTTP middleware
@@ -89,10 +91,14 @@ dbsight/
 │   │   │   ├── connections/         # Connection management UI
 │   │   │   │   ├── connection-list.tsx
 │   │   │   │   └── connection-form.tsx
-│   │   │   └── queries/             # Query analysis UI
-│   │   │       ├── slow-query-table.tsx
-│   │   │       ├── query-detail-drawer.tsx
-│   │   │       └── query-sparkline.tsx
+│   │   │   ├── queries/             # Query analysis UI
+│   │   │   │   ├── slow-query-table.tsx
+│   │   │   │   ├── query-detail-drawer.tsx
+│   │   │   │   └── query-sparkline.tsx
+│   │   │   ├── explain/             # EXPLAIN plan UI (Phase 08)
+│   │   │   │   └── explain-json-tree.tsx
+│   │   │   └── indexes/             # Index analysis UI (Phase 09)
+│   │   │       └── recommendations-list.tsx
 │   │   │
 │   │   └── pages/                   # Route-level components
 │   │       ├── dashboard-page.tsx   # Main dashboard
@@ -137,11 +143,11 @@ dbsight/
 
 ### Domain Models
 
-- **internal/models/models.go** (73 LOC): Defines Connection, SlowQuery, QuerySnapshot, QueryDelta, IndexStat, ExplainPlan, TableStat, DatabaseStats. Includes JSON tags for API serialization.
+- **internal/models/models.go**: Defines Connection, SlowQuery, QuerySnapshot, QueryDelta, IndexStat, ExplainPlan, TableStat, DatabaseStats, DuplicateIndex, Recommendation, IndexAnalysisResult. Includes JSON tags for API serialization.
 
 ### Data Persistence
 
-- **internal/store/store.go**: Interface defining Store behavior (CreateConnection, GetConnection, SaveQuerySnapshot, etc.)
+- **internal/store/store.go**: Interface defining Store behavior (Ping, CreateConnection, GetConnection, SaveQuerySnapshot, etc.)
 - **internal/store/postgres.go** (316 LOC): PostgreSQL implementation using pgxpool. Handles all database CRUD operations. Encrypts DSN on write, decrypts on read.
 - **internal/store/migrate.go**: Embedded SQL migrations runner. Tracks schema_version table to prevent re-running migrations.
 
@@ -156,12 +162,14 @@ dbsight/
 
 ### HTTP API
 
-- **internal/api/router.go**: Chi router setup. Routes: /api/connections/_, /api/paste/_, static SPA fallback.
+- **internal/api/router.go**: Chi router setup. Routes: /healthz, /api/connections/_, /api/paste/_, static SPA fallback.
 - **internal/api/app.go**: App struct holds Store, CryptoKey, DBAnalyzer factory. Embedded in all handlers.
 - **internal/api/middleware/logger.go**: Structured request/response logging via slog.
 - **internal/api/middleware/recovery.go**: Panic recovery, returns 500 error response.
-- **internal/api/handlers/connection.go** (116 LOC): ListConnections, GetConnection, CreateConnection, UpdateConnection, DeleteConnection, TestConnection.
-- **internal/api/handlers/queries.go** (168 LOC): ListQueries, StreamQueries (SSE), GetQueryHistory, ExplainQuery. SSE broadcasts delta changes per connection.
+- **internal/api/handlers/connection.go**: ListConnections, GetConnection, CreateConnection, UpdateConnection, DeleteConnection, TestConnection.
+- **internal/api/handlers/queries.go**: ListQueries, StreamQueries (SSE), GetQueryHistory. SSE broadcasts delta changes per connection.
+- **internal/api/handlers/explain.go**: RunExplain — decrypts DSN, connects adapter, calls GetExplainPlan with 30s timeout. (Phase 08)
+- **internal/api/handlers/indexes.go**: GetIndexAnalysis — collects index/table stats, detects unused/duplicate/missing, runs computeRecommendations to generate DROP/CREATE SQL. (Phase 09)
 - **internal/api/handlers/paste.go**: Parses MySQL slow log format, returns analysis without live DB.
 
 ### Background Worker
@@ -196,14 +204,16 @@ dbsight/
 - **web/src/components/queries/slow-query-table.tsx**: TanStack Table v8 with sortable/filterable columns. Displays query text, calls, total time, delta.
 - **web/src/components/queries/query-detail-drawer.tsx**: Side panel showing full query text, execution stats, EXPLAIN plan if available.
 - **web/src/components/queries/query-sparkline.tsx**: Recharts mini line chart showing execution time trend.
+- **web/src/components/explain/explain-json-tree.tsx**: Collapsible JSON tree renderer for EXPLAIN plan output. Annotates costs, highlights sequential scans and row estimate mismatches. (Phase 08)
+- **web/src/components/indexes/recommendations-list.tsx**: Renders Recommendation list with severity badges and copyable SQL. (Phase 09)
 
 #### Pages
 
 - **web/src/pages/dashboard-page.tsx**: Main overview; connection selector, quick stats, top slow queries chart.
 - **web/src/pages/connections-page.tsx**: Connection CRUD UI.
 - **web/src/pages/queries-page.tsx**: Query dashboard with live updates (SSE).
-- **web/src/pages/explain-page.tsx**: Run custom EXPLAIN queries, visualize plan tree.
-- **web/src/pages/indexes-page.tsx**: List indexes, identify unused, suggest missing.
+- **web/src/pages/explain-page.tsx**: Direct mode (run EXPLAIN via API) + Paste JSON mode; ANALYZE warning banner; renders explain-json-tree. (Phase 08)
+- **web/src/pages/indexes-page.tsx**: Summary cards (unused count, duplicate count, recommendation count), recommendations list, detail tables. (Phase 09)
 - **web/src/pages/paste-page.tsx**: Paste MySQL slow log, analyze offline.
 
 ### Migrations
@@ -325,20 +335,21 @@ type ExplainPlan struct {
 
 ## API Endpoints Summary
 
-| Method | Endpoint                              | Handler          | Returns           |
-| ------ | ------------------------------------- | ---------------- | ----------------- |
-| GET    | /api/connections                      | ListConnections  | []{Connection}    |
-| POST   | /api/connections                      | CreateConnection | {Connection}      |
-| GET    | /api/connections/{id}                 | GetConnection    | {Connection}      |
-| PUT    | /api/connections/{id}                 | UpdateConnection | {Connection}      |
-| DELETE | /api/connections/{id}                 | DeleteConnection | {ok: true}        |
-| POST   | /api/connections/{id}/test            | TestConnection   | {latencyMs: int}  |
-| GET    | /api/connections/{id}/queries         | ListQueries      | []{QuerySnapshot} |
-| GET    | /api/connections/{id}/queries/stream  | StreamQueries    | SSE stream        |
-| GET    | /api/connections/{id}/queries/history | GetQueryHistory  | []{QuerySnapshot} |
-| POST   | /api/connections/{id}/explain         | ExplainQuery     | {ExplainPlan}     |
-| GET    | /api/connections/{id}/indexes         | GetIndexStats    | []{IndexStat}     |
-| POST   | /api/paste/queries                    | PasteQueries     | {analysis: ...}   |
+| Method | Endpoint                              | Handler          | Returns               |
+| ------ | ------------------------------------- | ---------------- | --------------------- |
+| GET    | /healthz                              | inline           | {status}              |
+| GET    | /api/connections                      | ListConnections  | []{Connection}        |
+| POST   | /api/connections                      | CreateConnection | {Connection}          |
+| GET    | /api/connections/{id}                 | GetConnection    | {Connection}          |
+| PUT    | /api/connections/{id}                 | UpdateConnection | {Connection}          |
+| DELETE | /api/connections/{id}                 | DeleteConnection | {ok: true}            |
+| POST   | /api/connections/{id}/test            | TestConnection   | {latencyMs: int}      |
+| GET    | /api/connections/{id}/queries         | ListQueries      | []{QuerySnapshot}     |
+| GET    | /api/connections/{id}/queries/stream  | StreamQueries    | SSE stream            |
+| GET    | /api/connections/{id}/queries/history | GetQueryHistory  | []{QuerySnapshot}     |
+| POST   | /api/connections/{id}/explain         | RunExplain       | {ExplainPlan}         |
+| GET    | /api/connections/{id}/indexes         | GetIndexAnalysis | {IndexAnalysisResult} |
+| POST   | /api/paste/queries                    | PasteQueries     | {analysis: ...}       |
 
 ## Critical Design Patterns
 
@@ -387,6 +398,6 @@ Migrations tracked in `schema_version` table. Safe to re-run on upgrade.
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2026-02-21
-**Scope:** MVP complete (Phases 1–7)
+**Document Version:** 1.1
+**Last Updated:** 2026-02-22
+**Scope:** Production ready (Phases 1–10)

@@ -71,3 +71,28 @@ type DatabaseStats struct {
 	MaxConns      int     `json:"max_conns"`
 	CacheHitRatio float64 `json:"cache_hit_ratio"`
 }
+
+type DuplicateIndex struct {
+	TableName string `json:"table_name"`
+	Index1    string `json:"index1"`
+	Index2    string `json:"index2"`
+	IndexDef  string `json:"index_def"`
+}
+
+type Recommendation struct {
+	Type        string `json:"type"`
+	SchemaName  string `json:"schema_name"`
+	TableName   string `json:"table_name"`
+	IndexName   string `json:"index_name,omitempty"`
+	Description string `json:"description"`
+	SQL         string `json:"sql,omitempty"`
+	Severity    string `json:"severity"`
+}
+
+type IndexAnalysisResult struct {
+	UnusedIndexes     []IndexStat      `json:"unused_indexes"`
+	MissingCandidates []TableStat      `json:"missing_candidates"`
+	DuplicateIndexes  []DuplicateIndex `json:"duplicate_indexes"`
+	Recommendations   []Recommendation `json:"recommendations"`
+	CapturedAt        time.Time        `json:"captured_at"`
+}

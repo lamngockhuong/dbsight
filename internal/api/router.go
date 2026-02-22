@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lamngockhuong/dbsight/internal/api/handlers"
@@ -19,6 +22,22 @@ func NewRouter(app *App, staticFS fs.FS) http.Handler {
 
 	h := handlers.New(app.Store, app.CryptoKey, app.NewAdapter)
 
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		dbStatus := "ok"
+		if err := app.Store.Ping(ctx); err != nil {
+			dbStatus = "error"
+		}
+		status := http.StatusOK
+		if dbStatus != "ok" {
+			status = http.StatusServiceUnavailable
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "db": dbStatus})
+	})
+
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/connections", func(r chi.Router) {
 			r.Get("/", h.ListConnections)
@@ -31,6 +50,8 @@ func NewRouter(app *App, staticFS fs.FS) http.Handler {
 				r.Get("/queries", h.ListQueries)
 				r.Get("/queries/stream", h.StreamQueries)
 				r.Get("/queries/history", h.ListQueryHistory)
+				r.Post("/explain", h.RunExplain)
+				r.Get("/indexes", h.GetIndexAnalysis)
 			})
 		})
 		r.Post("/paste/queries", h.ParseSlowLog)

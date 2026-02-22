@@ -1,0 +1,10 @@
+web/node_modules
+web/dist
+.git
+.env
+*.env
+bin/
+tmp/
+.claude/
+plans/
+docs/

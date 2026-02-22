@@ -2,25 +2,52 @@ services:
   postgres:
     image: postgres:18-alpine
     command: postgres -c shared_preload_libraries=pg_stat_statements
+    restart: unless-stopped
     environment:
       POSTGRES_DB: dbsight
       POSTGRES_USER: dbsight
-      POSTGRES_PASSWORD: secret
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
     ports:
       - "5499:5432"
     volumes:
-      - pgdata:/var/lib/postgresql
+      - pgdata:/var/lib/postgresql/data
       - ./scripts/init-pg-stat-statements.sql:/docker-entrypoint-initdb.d/init-pg-stat-statements.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbsight"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  migrate:
+    build: .
+    command: migrate
+    environment:
+      DATABASE_URL: postgres://dbsight:${POSTGRES_PASSWORD:-secret}@postgres:5432/dbsight?sslmode=disable
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   app:
     build: .
-    depends_on:
-      - postgres
-    environment:
-      DATABASE_URL: postgres://dbsight:secret@postgres:5432/dbsight?sslmode=disable
-      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    command: serve
+    restart: unless-stopped
     ports:
-      - "42198:42198"
+      - "${PORT:-42198}:42198"
+    environment:
+      PORT: "42198"
+      DATABASE_URL: postgres://dbsight:${POSTGRES_PASSWORD:-secret}@postgres:5432/dbsight?sslmode=disable
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      WORKER_INTERVAL_SECS: "30"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:42198/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   pgdata:

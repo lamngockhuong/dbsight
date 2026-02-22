@@ -113,7 +113,7 @@ docker run -e DATABASE_URL=... -e ENCRYPTION_KEY=... -p 42198:42198 dbsight:late
 
 | Variable               | Default | Description                             |
 | ---------------------- | ------- | --------------------------------------- |
-| `PORT`                 | `42198`  | HTTP server port                        |
+| `PORT`                 | `42198` | HTTP server port                        |
 | `DATABASE_URL`         | —       | PostgreSQL connection string for app DB |
 | `ENCRYPTION_KEY`       | —       | 64 hex chars (32 bytes) for AES-256-GCM |
 | `WORKER_INTERVAL_SECS` | `30`    | Metrics polling interval in seconds     |
@@ -144,7 +144,7 @@ CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 ## Project Status
 
-**MVP (Phases 1–7): Complete**
+**All Phases Complete**
 
 - [x] Project scaffold + config
 - [x] Database schema + store layer
@@ -153,12 +153,9 @@ CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 - [x] Background worker + query endpoints
 - [x] React frontend foundation
 - [x] Slow query dashboard UI
-
-**Post-MVP:**
-
-- [ ] EXPLAIN plan visualization (custom tree renderer)
-- [ ] Index analysis dashboard
-- [ ] Docker production deployment
+- [x] EXPLAIN plan visualization (custom tree renderer)
+- [x] Index analysis dashboard
+- [x] Docker production deployment
 
 ## License
 

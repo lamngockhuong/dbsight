@@ -18,9 +18,9 @@ DBSight is a lightweight, single-binary database performance analyzer for Postgr
 4. **Security by Default** — AES-256-GCM encryption for database credentials, no plaintext secrets in storage or API responses
 5. **Extensibility** — Pluggable adapter interface; add MySQL, MariaDB, or other databases by implementing one interface
 
-## Current Status: MVP Complete
+## Current Status: Production Ready
 
-**Phases Completed (1–7):**
+**Phases Completed (1–10):**
 
 - [x] Project scaffold with Cobra CLI and dependency wiring
 - [x] PostgreSQL schema, migrations, and store layer (pgxpool)
@@ -29,14 +29,19 @@ DBSight is a lightweight, single-binary database performance analyzer for Postgr
 - [x] Background worker with 30s polling scheduler
 - [x] React frontend foundation (Vite, TypeScript, shadcn/ui)
 - [x] Slow query dashboard with sortable tables and sparkline charts
+- [x] EXPLAIN plan viewer — Direct mode + Paste JSON, collapsible tree with cost/scan warnings (Phase 08)
+- [x] Index analysis — unused, duplicate, missing detection + SQL recommendations (Phase 09)
+- [x] Docker multi-stage build, /healthz endpoint, docker-compose with healthchecks (Phase 10)
 
-**MVP Capabilities:**
+**Capabilities:**
 
 - Create, test, edit, delete database connections
 - View slow queries ranked by total time with execution delta tracking
 - Real-time query metric streaming for live dashboard
+- EXPLAIN plan visualization with sequential scan and row mismatch warnings
+- Index analysis: identify unused/duplicate indexes, tables missing indexes, with generated DROP/CREATE SQL
 - Parse MySQL slow log format (paste mode)
-- View connection-level statistics
+- Health check endpoint for container orchestration
 
 ## Functional Requirements
 
@@ -188,6 +193,7 @@ DBSight is a lightweight, single-binary database performance analyzer for Postgr
 
 ### AC4: API Endpoints
 
+- [x] GET /healthz (Phase 10)
 - [x] GET /api/connections
 - [x] POST /api/connections (create)
 - [x] GET /api/connections/{id}
@@ -196,6 +202,8 @@ DBSight is a lightweight, single-binary database performance analyzer for Postgr
 - [x] POST /api/connections/{id}/test
 - [x] GET /api/connections/{id}/queries
 - [x] GET /api/connections/{id}/queries/stream (SSE)
+- [x] POST /api/connections/{id}/explain (Phase 08)
+- [x] GET /api/connections/{id}/indexes (Phase 09)
 - [x] POST /api/paste/queries
 
 ### AC5: Security
@@ -213,28 +221,13 @@ DBSight is a lightweight, single-binary database performance analyzer for Postgr
 - [x] Worker scheduling tests
 - [x] 70% code coverage
 
-## Post-MVP Roadmap
+## Roadmap
 
-### Phase 8: EXPLAIN Plan Visualization
+### Phases 8–10: Completed 2026-02-22
 
-- Visual query plan tree with cost breakdown
-- Identify bottleneck nodes (high planning time, seq scans)
-- Comparison tool: before/after optimization
-- Estimate impact of proposed indexes
-
-### Phase 9: Index Analysis Dashboard
-
-- Unused indexes → drop candidates
-- Missing indexes → scan pattern analysis
-- Index bloat → vacuum/reindex recommendations
-- Size vs. usage ratio heatmap
-
-### Phase 10: Docker Production Deployment
-
-- Multi-stage Dockerfile (Go build, React build, runtime image)
-- docker-compose for local dev (postgres + dbsight)
-- Health checks, graceful shutdown
-- Production environment guide (reverse proxy, SSL, secret management)
+- **Phase 08:** EXPLAIN plan viewer (direct + paste JSON mode, collapsible tree, scan warnings)
+- **Phase 09:** Index analysis (unused, duplicate, missing detection; DROP/CREATE SQL generation)
+- **Phase 10:** Docker 3-stage build, /healthz endpoint, docker-compose healthchecks, Makefile targets
 
 ### Phase 11: Authentication & RBAC (Post-MVP)
 
@@ -279,6 +272,6 @@ DBSight is a lightweight, single-binary database performance analyzer for Postgr
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2026-02-21
-**Status:** MVP Complete — Ready for Phase 8
+**Document Version:** 1.1
+**Last Updated:** 2026-02-22
+**Status:** Production Ready — Phases 1–10 Complete

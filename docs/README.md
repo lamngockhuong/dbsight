@@ -64,7 +64,7 @@ npm run dev
 
 | Variable               | Default    | Description                            |
 | ---------------------- | ---------- | -------------------------------------- |
-| `PORT`                 | `42198`     | API server port                        |
+| `PORT`                 | `42198`    | API server port                        |
 | `DATABASE_URL`         | (required) | PostgreSQL connection string           |
 | `ENCRYPTION_KEY`       | (required) | 32-byte hex for AES-256-GCM encryption |
 | `WORKER_INTERVAL_SECS` | `30`       | Metrics polling interval (seconds)     |
