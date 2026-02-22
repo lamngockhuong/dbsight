@@ -7,6 +7,8 @@ Database performance analyzer for PostgreSQL. Monitor slow queries, visualize EX
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+**Documentation:** [dbsight.khuong.dev](https://dbsight.khuong.dev)
+
 ## Features
 
 - **Slow Query Detection** — polls `pg_stat_statements` every 30s, ranks by total execution time with delta tracking
@@ -51,9 +53,15 @@ go run . serve
 ### Frontend Development
 
 ```bash
-cd web
-pnpm install
-pnpm run dev    # Vite dev server on :5173, proxies /api to :42198
+pnpm install          # Install all workspace dependencies
+pnpm --filter web dev # Vite dev server on :5173, proxies /api to :42198
+```
+
+### Documentation Site
+
+```bash
+pnpm --filter docs dev   # Starlight dev server on :4321
+pnpm --filter docs build # Build static docs site
 ```
 
 ### Production Build
@@ -72,7 +80,19 @@ docker run -e DATABASE_URL=... -e ENCRYPTION_KEY=... -p 42198:42198 dbsight:late
 
 ## Architecture
 
-```bash
+This is a **pnpm workspaces monorepo**:
+
+```
+dbsight/
+├── apps/web/        # React SPA (Vite + shadcn/ui)
+├── apps/docs/       # Starlight documentation site (EN + VI)
+├── internal/        # Go backend packages
+├── migrations/      # SQL migration files
+├── main.go          # Entry point — embeds apps/web/dist into binary
+└── docker-compose.yml
+```
+
+```
 ┌─────────────────────────────────────────────┐
 │              Go Binary (dbsight)            │
 │                                             │
@@ -95,7 +115,7 @@ docker run -e DATABASE_URL=... -e ENCRYPTION_KEY=... -p 42198:42198 dbsight:late
         └───────────────┘
 ```
 
-**Single binary** serves the API, background worker, and React SPA. The worker collects metrics from target databases via the adapter interface — extensible to MySQL and others.
+The single binary serves the API, background worker, and React SPA. The worker collects metrics from target databases via the adapter interface — extensible to MySQL and others.
 
 ## Tech Stack
 
@@ -108,6 +128,7 @@ docker run -e DATABASE_URL=... -e ENCRYPTION_KEY=... -p 42198:42198 dbsight:late
 | Security  | AES-256-GCM encrypted DSN storage                      |
 | Real-time | Server-Sent Events (SSE)                               |
 | Deploy    | Docker multi-stage build                               |
+| Docs      | Astro Starlight, i18n (EN + VI), Pagefind search       |
 
 ## Environment Variables
 
@@ -144,8 +165,6 @@ CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 ## Project Status
 
-**All Phases Complete**
-
 - [x] Project scaffold + config
 - [x] Database schema + store layer
 - [x] DB adapter interface + PostgreSQL implementation
@@ -156,6 +175,8 @@ CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 - [x] EXPLAIN plan visualization (custom tree renderer)
 - [x] Index analysis dashboard
 - [x] Docker production deployment
+- [x] Monorepo restructure (pnpm workspaces)
+- [x] Documentation site (Starlight, EN + VI)
 
 ## License
 
