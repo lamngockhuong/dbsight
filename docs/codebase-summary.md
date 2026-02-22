@@ -5,14 +5,38 @@
 ```bash
 dbsight/
 ├── main.go                          # CLI entry point (Cobra)
-├── Makefile                         # Build targets
-├── Dockerfile                       # Multi-stage build (Go + React)
+├── Makefile                         # Build targets (monorepo-aware)
+├── Dockerfile                       # Multi-stage build (Node + Go + Alpine)
 ├── docker-compose.yml               # Dev environment (postgres + app)
+├── pnpm-workspace.yaml              # pnpm monorepo workspace config
+├── package.json                     # Root workspace scripts
 ├── .env.example                     # Environment variable template
 ├── go.mod / go.sum                  # Go module dependencies
 ├── README.md                        # Project overview (end-user)
 ├── LICENSE                          # MIT license
 ├── CLAUDE.md                        # Development instructions
+│
+├── apps/
+│   ├── web/                         # React SPA (moved from web/)
+│   │   ├── public/                  # Static assets
+│   │   ├── src/                     # Application source
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   ├── vite.config.ts
+│   │   ├── biome.json
+│   │   └── components.json
+│   │
+│   └── docs/                        # Starlight documentation site (EN + VI)
+│       ├── src/
+│       │   ├── content/             # MDX docs content
+│       │   └── assets/              # Doc assets
+│       ├── astro.config.mjs
+│       ├── package.json
+│       └── tsconfig.json
+│
+├── .github/
+│   └── workflows/
+│       └── deploy-docs.yml          # GitHub Pages deployment for docs site
 │
 ├── internal/
 │   ├── config/                      # Configuration loading
@@ -62,57 +86,7 @@ dbsight/
 │   ├── 003_create_index_stats_snapshots.sql
 │   └── embed.go                     # go:embed FS
 │
-├── web/                             # React frontend
-│   ├── public/                      # Static assets
-│   ├── src/
-│   │   ├── main.tsx                 # Entry point
-│   │   ├── App.tsx                  # Root component
-│   │   ├── index.css                # Global styles
-│   │   │
-│   │   ├── api/
-│   │   │   └── client.ts            # API client (fetch wrapper)
-│   │   │
-│   │   ├── types/
-│   │   │   └── index.ts             # TypeScript interfaces
-│   │   │
-│   │   ├── hooks/
-│   │   │   ├── use-connections.ts   # Connection state mgmt
-│   │   │   ├── use-queries.ts       # Query state mgmt
-│   │   │   └── use-sse.ts           # Server-Sent Events
-│   │   │
-│   │   ├── services/
-│   │   │   └── [API client code]    # Centralized API calls
-│   │   │
-│   │   ├── components/
-│   │   │   ├── ui/                  # shadcn/ui base components
-│   │   │   ├── layout/              # Layout wrappers
-│   │   │   │   ├── layout.tsx       # Main shell
-│   │   │   │   └── sidebar.tsx      # Navigation
-│   │   │   ├── connections/         # Connection management UI
-│   │   │   │   ├── connection-list.tsx
-│   │   │   │   └── connection-form.tsx
-│   │   │   ├── queries/             # Query analysis UI
-│   │   │   │   ├── slow-query-table.tsx
-│   │   │   │   ├── query-detail-drawer.tsx
-│   │   │   │   └── query-sparkline.tsx
-│   │   │   ├── explain/             # EXPLAIN plan UI (Phase 08)
-│   │   │   │   └── explain-json-tree.tsx
-│   │   │   └── indexes/             # Index analysis UI (Phase 09)
-│   │   │       └── recommendations-list.tsx
-│   │   │
-│   │   └── pages/                   # Route-level components
-│   │       ├── dashboard-page.tsx   # Main dashboard
-│   │       ├── connections-page.tsx # Connection management
-│   │       ├── queries-page.tsx     # Query analysis
-│   │       ├── explain-page.tsx     # EXPLAIN plan viewer
-│   │       ├── indexes-page.tsx     # Index analysis
-│   │       └── paste-page.tsx       # Offline log analysis
-│   │
-│   ├── package.json                 # Dependencies (React, Vite, shadcn/ui, etc.)
-│   ├── tsconfig.json                # TypeScript config
-│   ├── vite.config.ts               # Vite build config
-│   ├── biome.json                   # Biome linter + formatter config
-│   └── components.json              # shadcn/ui component registry
+│   (web/ contents moved to apps/web/ — see above)
 │
 ├── docs/                            # Project documentation
 │   ├── README.md                    # [KEPT] End-user docs
@@ -135,7 +109,7 @@ dbsight/
 
 ### Backend Entry Point & Wiring
 
-- **main.go** (130 LOC): Cobra CLI with `serve` and `migrate` commands. Initializes config, Store, Adapters, and wires everything into the App struct. Embeds web/dist for SPA serving.
+- **main.go** (130 LOC): Cobra CLI with `serve` and `migrate` commands. Initializes config, Store, Adapters, and wires everything into the App struct. Embeds `apps/web/dist` for SPA serving via `//go:embed apps/web/dist`.
 
 ### Configuration
 
@@ -186,35 +160,35 @@ dbsight/
 
 #### API Client
 
-- **web/src/api/client.ts**: Fetch-based API wrapper. Methods: getConnections, createConnection, testConnection, getQueries, getQueryHistory, explainQuery, etc.
+- **apps/web/src/api/client.ts**: Fetch-based API wrapper. Methods: getConnections, createConnection, testConnection, getQueries, getQueryHistory, explainQuery, etc.
 
 #### Hooks
 
-- **web/src/hooks/use-connections.ts**: useState for connections list, loading, error. Fetch on mount.
-- **web/src/hooks/use-queries.ts**: useState for slow queries per connection. Handles sorting, filtering.
-- **web/src/hooks/use-sse.ts**: EventSource subscription to /api/connections/{id}/queries/stream. Merges delta updates into query list.
+- **apps/web/src/hooks/use-connections.ts**: useState for connections list, loading, error. Fetch on mount.
+- **apps/web/src/hooks/use-queries.ts**: useState for slow queries per connection. Handles sorting, filtering.
+- **apps/web/src/hooks/use-sse.ts**: EventSource subscription to /api/connections/{id}/queries/stream. Merges delta updates into query list.
 
 #### Components
 
-- **web/src/components/ui/\***: shadcn/ui base components (Button, Card, Input, Table, Badge, Tabs, Textarea).
-- **web/src/components/layout/layout.tsx**: Main shell with sidebar + content area.
-- **web/src/components/layout/sidebar.tsx**: Navigation links to pages.
-- **web/src/components/connections/connection-list.tsx**: Table of registered connections with test/edit/delete buttons.
-- **web/src/components/connections/connection-form.tsx**: Form to create/edit connection (name, host, port, database, user, password).
-- **web/src/components/queries/slow-query-table.tsx**: TanStack Table v8 with sortable/filterable columns. Displays query text, calls, total time, delta.
-- **web/src/components/queries/query-detail-drawer.tsx**: Side panel showing full query text, execution stats, EXPLAIN plan if available.
-- **web/src/components/queries/query-sparkline.tsx**: Recharts mini line chart showing execution time trend.
-- **web/src/components/explain/explain-json-tree.tsx**: Collapsible JSON tree renderer for EXPLAIN plan output. Annotates costs, highlights sequential scans and row estimate mismatches. (Phase 08)
-- **web/src/components/indexes/recommendations-list.tsx**: Renders Recommendation list with severity badges and copyable SQL. (Phase 09)
+- **apps/web/src/components/ui/\***: shadcn/ui base components (Button, Card, Input, Table, Badge, Tabs, Textarea).
+- **apps/web/src/components/layout/layout.tsx**: Main shell with sidebar + content area.
+- **apps/web/src/components/layout/sidebar.tsx**: Navigation links to pages.
+- **apps/web/src/components/connections/connection-list.tsx**: Table of registered connections with test/edit/delete buttons.
+- **apps/web/src/components/connections/connection-form.tsx**: Form to create/edit connection (name, host, port, database, user, password).
+- **apps/web/src/components/queries/slow-query-table.tsx**: TanStack Table v8 with sortable/filterable columns. Displays query text, calls, total time, delta.
+- **apps/web/src/components/queries/query-detail-drawer.tsx**: Side panel showing full query text, execution stats, EXPLAIN plan if available.
+- **apps/web/src/components/queries/query-sparkline.tsx**: Recharts mini line chart showing execution time trend.
+- **apps/web/src/components/explain/explain-json-tree.tsx**: Collapsible JSON tree renderer for EXPLAIN plan output. Annotates costs, highlights sequential scans and row estimate mismatches. (Phase 08)
+- **apps/web/src/components/indexes/recommendations-list.tsx**: Renders Recommendation list with severity badges and copyable SQL. (Phase 09)
 
 #### Pages
 
-- **web/src/pages/dashboard-page.tsx**: Main overview; connection selector, quick stats, top slow queries chart.
-- **web/src/pages/connections-page.tsx**: Connection CRUD UI.
-- **web/src/pages/queries-page.tsx**: Query dashboard with live updates (SSE).
-- **web/src/pages/explain-page.tsx**: Direct mode (run EXPLAIN via API) + Paste JSON mode; ANALYZE warning banner; renders explain-json-tree. (Phase 08)
-- **web/src/pages/indexes-page.tsx**: Summary cards (unused count, duplicate count, recommendation count), recommendations list, detail tables. (Phase 09)
-- **web/src/pages/paste-page.tsx**: Paste MySQL slow log, analyze offline.
+- **apps/web/src/pages/dashboard-page.tsx**: Main overview; connection selector, quick stats, top slow queries chart.
+- **apps/web/src/pages/connections-page.tsx**: Connection CRUD UI.
+- **apps/web/src/pages/queries-page.tsx**: Query dashboard with live updates (SSE).
+- **apps/web/src/pages/explain-page.tsx**: Direct mode (run EXPLAIN via API) + Paste JSON mode; ANALYZE warning banner; renders explain-json-tree. (Phase 08)
+- **apps/web/src/pages/indexes-page.tsx**: Summary cards (unused count, duplicate count, recommendation count), recommendations list, detail tables. (Phase 09)
+- **apps/web/src/pages/paste-page.tsx**: Paste MySQL slow log, analyze offline.
 
 ### Migrations
 
@@ -232,7 +206,7 @@ dbsight/
 - **cobra** — CLI framework for `serve` and `migrate` commands
 - **log/slog** — Structured logging (stdlib, no external dep post-Go 1.21)
 
-### Node / npm (web/package.json)
+### Node / pnpm (apps/web/package.json, root package.json)
 
 - **react@19** — UI library
 - **react-dom@19** — DOM rendering
@@ -375,7 +349,7 @@ DSN never stored plaintext. AES-256-GCM with authenticated encryption prevents t
 
 ### 5. Embedded Assets (Deployment)
 
-Frontend SPA embedded in Go binary via `//go:embed web/dist`. Single artifact to deploy.
+Frontend SPA embedded in Go binary via `//go:embed apps/web/dist`. Single artifact to deploy.
 
 ### 6. Idempotent Migrations (Durability)
 
@@ -398,6 +372,6 @@ Migrations tracked in `schema_version` table. Safe to re-run on upgrade.
 
 ---
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Last Updated:** 2026-02-22
-**Scope:** Production ready (Phases 1–10)
+**Scope:** Production ready (Phases 1–10) + monorepo restructure

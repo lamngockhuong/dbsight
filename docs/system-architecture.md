@@ -188,15 +188,15 @@ AES-256-GCM encryption/decryption:
 
 ### 2. Frontend (React)
 
-Built with Vite, TypeScript, shadcn/ui components.
+Built with Vite, TypeScript, shadcn/ui components. Located in `apps/web/` (pnpm workspace package name: `web`).
 
 **Directory Structure**:
 
-- `src/components/` — Reusable UI components (shadcn/ui)
-- `src/pages/` — Page layouts and views
-- `src/hooks/` — Custom React hooks (useSSE, useQuery, etc.)
-- `src/services/` — API client code
-- `src/types/` — TypeScript type definitions
+- `apps/web/src/components/` — Reusable UI components (shadcn/ui)
+- `apps/web/src/pages/` — Page layouts and views
+- `apps/web/src/hooks/` — Custom React hooks (useSSE, useQuery, etc.)
+- `apps/web/src/api/` — API client code
+- `apps/web/src/types/` — TypeScript type definitions
 
 **Key Features**:
 
@@ -329,14 +329,18 @@ Migrations run once on server startup, tracked via `schema_version` table.
 
 ### Docker (Phase 10)
 
-3-stage Dockerfile: Node (React build) → Go builder (stripped binary) → Alpine runtime (non-root user).
+3-stage Dockerfile: Node (React build via `pnpm --filter web build`) → Go builder (stripped binary) → Alpine runtime (non-root user).
 
 `docker-compose.yml`: postgres with healthcheck → migrate service → app with `HEALTHCHECK curl /healthz`.
 
-Makefile targets: `build`, `docker-build`, `docker-up`, `docker-down`, `generate-key`, `test`.
+Makefile targets: `build`, `build-docs`, `dev-docs`, `docker-build`, `docker-up`, `docker-down`, `generate-key`, `test`.
+
+### Documentation Site (Phase 11-pre)
+
+`apps/docs/` — Astro Starlight site with EN + VI i18n. Deployed to `dbsight.khuong.dev` via GitHub Actions (`deploy-docs.yml`) on push to `main` when `apps/docs/**` changes.
 
 ---
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Last Updated:** 2026-02-22
-**Scope:** Production ready (Phases 1–10)
+**Scope:** Production ready (Phases 1–10) + monorepo restructure

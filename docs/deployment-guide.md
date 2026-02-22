@@ -32,10 +32,15 @@ go run . serve
 In another terminal:
 
 ```bash
-cd web
-npm install
-npm run dev    # Frontend dev server on http://localhost:5173
+pnpm install
+pnpm --filter web dev    # Frontend dev server on http://localhost:5173
 # Vite proxy routes /api/* to http://localhost:42198
+```
+
+To run the documentation site locally:
+
+```bash
+pnpm --filter docs dev   # Docs dev server (Astro Starlight)
 ```
 
 ### Development without Docker
@@ -60,7 +65,7 @@ go run . migrate && go run . serve
 ### Build Image
 
 ```bash
-# Multi-stage build (Node + Go + Alpine runtime)
+# Multi-stage build: pnpm install → React build (apps/web) → Go binary → Alpine runtime
 docker build -t dbsight:latest .
 ```
 
@@ -549,5 +554,5 @@ If `ENCRYPTION_KEY` is lost, stored encrypted DSNs cannot be decrypted. Mitigati
 
 ---
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Last Updated:** 2026-02-22

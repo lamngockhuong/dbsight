@@ -102,6 +102,21 @@ Returns: 200 {"status":"ok"} | 503 {"status":"error","error":"..."}
 
 ---
 
+## Phase 10.5: Monorepo Restructure + Documentation Site (Complete)
+
+**Status:** ✅ Complete | **Priority:** Medium | **Duration:** Completed 2026-02-22
+
+### Delivered
+
+- **Monorepo layout**: `web/` moved to `apps/web/`; root `pnpm-workspace.yaml` + `package.json` added
+- **Docs site**: `apps/docs/` — Astro Starlight with EN + VI i18n, deployed to `dbsight.khuong.dev`
+- **Makefile**: updated to use `pnpm --filter web`; added `dev-docs` and `build-docs` targets
+- **Dockerfile**: updated for monorepo multi-stage build (`apps/web/dist`)
+- **main.go embed**: updated to `//go:embed apps/web/dist`
+- **GitHub Actions**: `deploy-docs.yml` — deploys `apps/docs` to GitHub Pages on push to `main`
+
+---
+
 ## Phase 11: Authentication & RBAC (Post-MVP)
 
 **Status:** 🔮 Future | **Priority:** Medium | **Estimated Duration:** 6 days
@@ -153,10 +168,11 @@ Deeper database health monitoring beyond slow queries.
 | 8     | ✅ Complete | —        | High     | fullstack-dev | 2026-02-21 | 2026-02-22 |
 | 9     | ✅ Complete | —        | High     | fullstack-dev | 2026-02-21 | 2026-02-22 |
 | 10    | ✅ Complete | —        | High     | devops-eng    | 2026-02-21 | 2026-02-22 |
+| 10.5  | ✅ Complete | —        | Medium   | devops-eng    | 2026-02-22 | 2026-02-22 |
 | 11    | 🔮 Future   | 6 days   | Medium   | fullstack-dev | TBD        | TBD        |
 | 12    | 🔮 Future   | 8 days   | Low      | fullstack-dev | TBD        | TBD        |
 
-**Phases 8–10 completed 2026-02-22 — project is production-ready.**
+**Phases 8–10.5 completed 2026-02-22 — project is production-ready with public documentation site.**
 
 ## Success Metrics by Phase
 
@@ -168,12 +184,14 @@ Deeper database health monitoring beyond slow queries.
 - ✅ >70% test coverage
 - ✅ Zero manual setup (migrations auto-run)
 
-### Phase 8-10 (Production Ready — Complete)
+### Phase 8-10.5 (Production Ready — Complete)
 
 - ✅ EXPLAIN plan viewer with collapsible JSON tree and scan warnings
 - ✅ Index analysis: unused, duplicate, missing index detection with SQL recommendations
 - ✅ Docker multi-stage build, /healthz endpoint, docker-compose with healthchecks
 - ✅ Makefile targets: docker-up, docker-down, generate-key, test
+- ✅ Monorepo (pnpm workspaces): `apps/web/` + `apps/docs/` (Starlight, EN+VI)
+- ✅ GitHub Pages deployment via `deploy-docs.yml` → `dbsight.khuong.dev`
 
 ### Phase 11-12 (Enterprise Ready)
 
@@ -246,6 +264,6 @@ Deeper database health monitoring beyond slow queries.
 
 ---
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Last Updated:** 2026-02-22
 **Next Review:** After Phase 11 planning
