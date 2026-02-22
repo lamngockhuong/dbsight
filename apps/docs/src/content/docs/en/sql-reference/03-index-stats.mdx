@@ -1,11 +1,20 @@
 ---
 title: Index & Table Statistics
-description: SQL queries for index usage, duplicate detection, and table statistics
+description: SQL queries for index usage, duplicate detection, and table statistics across PostgreSQL, MySQL, and MariaDB
 ---
 
-DBSight runs three queries against PostgreSQL system catalogs to surface index health: index usage stats, duplicate index detection, and table-level scan statistics. All three are read-only and safe to run in production.
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-## Index Usage
+DBSight queries database-specific system tables to surface index health: unused index detection, duplicate index detection, and table-level scan statistics. All queries are read-only and safe to run in production.
+
+<Tabs>
+  <TabItem label="PostgreSQL">
+
+## PostgreSQL Index & Table Statistics
+
+DBSight runs three queries against PostgreSQL system catalogs.
+
+### Index Usage
 
 Source: `internal/adapter/indexes.go` — `GetIndexStats`
 
@@ -24,7 +33,7 @@ ORDER BY idx_scan ASC, pg_relation_size(indexrelid) DESC
 
 Results are sorted by `idx_scan ASC` so unused indexes (0 scans) appear first, then by size descending so large unused indexes are most visible.
 
-### Column Descriptions
+#### Column Descriptions
 
 | Column             | Type   | Description                                                        |
 | ------------------ | ------ | ------------------------------------------------------------------ |
@@ -36,13 +45,13 @@ Results are sorted by `idx_scan ASC` so unused indexes (0 scans) appear first, t
 | `idx_tup_fetch`    | bigint | Tuples fetched from the heap via this index                        |
 | `index_size_bytes` | bigint | On-disk size of the index in bytes                                 |
 
-### Interpreting Results
+#### Interpreting Results
 
 - **`idx_scan = 0`** — the index has never been used since statistics were last reset. If the database has been running under normal load for days or weeks, this index is a drop candidate. Verify with `SELECT pg_stat_reset()` timing before dropping.
 - **Large size with low scans** — the index costs write overhead and disk space with little read benefit.
 - **`idx_tup_fetch` much lower than `idx_tup_read`** — the index is used for scans but many fetched tuples are filtered out by visibility or additional predicates, which may indicate a partially matching index.
 
-## Duplicate Indexes
+### Duplicate Indexes
 
 Source: `internal/adapter/indexes.go` — `GetDuplicateIndexes`
 
@@ -63,7 +72,7 @@ ORDER BY a.tablename, a.indexname
 
 The self-join on `pg_indexes` matches pairs where both `tablename` and `indexdef` are identical. The `a.indexname < b.indexname` condition ensures each duplicate pair appears exactly once.
 
-### Column Descriptions
+#### Column Descriptions
 
 | Column      | Type | Description                                |
 | ----------- | ---- | ------------------------------------------ |
@@ -72,13 +81,9 @@ The self-join on `pg_indexes` matches pairs where both `tablename` and `indexdef
 | `index2`    | name | Second index name (alphabetically later)   |
 | `indexdef`  | text | Full index definition (identical for both) |
 
-### Interpreting Results
+Any row returned here represents two indexes with exactly the same definition. One is redundant — drop one from each pair after confirming neither is used by a unique constraint or foreign key.
 
-Any row returned here represents two indexes with exactly the same definition. One of them is redundant — it consumes disk space and slows down every `INSERT`, `UPDATE`, and `DELETE` on the table without adding any query capability. Drop one from each pair after confirming neither is used by a unique constraint or foreign key.
-
-Duplicates commonly appear after migrations that recreate indexes without dropping the originals, or after `pg_restore` runs against a database that already has indexes.
-
-## Table Statistics
+### Table Statistics
 
 Source: `internal/adapter/indexes.go` — `GetTableStats`
 
@@ -96,7 +101,7 @@ ORDER BY seq_scan DESC
 
 Results are sorted by `seq_scan DESC` to surface tables receiving the most full-table scans.
 
-### Column Descriptions
+#### Column Descriptions
 
 | Column             | Type   | Description                                            |
 | ------------------ | ------ | ------------------------------------------------------ |
@@ -107,13 +112,173 @@ Results are sorted by `seq_scan DESC` to surface tables receiving the most full-
 | `n_live_tup`       | bigint | Estimated number of live rows                          |
 | `table_size_bytes` | bigint | Total on-disk size including indexes and TOAST (bytes) |
 
-### Interpreting Results
+#### Interpreting Results
 
 - **High `seq_scan` on a large table** — the most actionable signal. If `seq_tup_read / seq_scan` is close to `n_live_tup`, nearly every scan reads the entire table. An index on the most common filter column will convert these to `Index Scan` operations.
 - **High `seq_scan` on a small table** — often acceptable. PostgreSQL's planner intentionally chooses sequential scans on small tables because they are faster than index lookups when most rows qualify.
-- **`n_live_tup` much lower than expected** — may indicate aggressive `DELETE` without `VACUUM`, causing table bloat. Check with `pg_relation_size` vs `pg_total_relation_size`.
+- **`n_live_tup` much lower than expected** — may indicate aggressive `DELETE` without `VACUUM`, causing table bloat.
+
+{/* */}
+
+  </TabItem>
+  <TabItem label="MySQL">
+
+## MySQL Index & Table Statistics
+
+MySQL does not expose per-index scan counters directly in a single view. DBSight uses a two-tier approach for unused index detection and queries `INFORMATION_SCHEMA.STATISTICS` for duplicate detection.
+
+### Index Usage (Unused Indexes)
+
+Source: `internal/adapter/mysql_indexes.go` — `GetIndexStats`
+
+DBSight first tries `sys.schema_unused_indexes` (available when the `sys` schema is present), then falls back to `performance_schema.table_io_waits_summary_by_index_usage`.
+
+**Primary query (sys schema):**
+
+```sql
+SELECT object_schema, object_name, index_name
+FROM sys.schema_unused_indexes
+WHERE object_schema NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+```
+
+**Fallback query (performance_schema):**
+
+```sql
+SELECT OBJECT_SCHEMA, OBJECT_NAME, INDEX_NAME
+FROM performance_schema.table_io_waits_summary_by_index_usage
+WHERE INDEX_NAME IS NOT NULL AND COUNT_STAR = 0
+  AND OBJECT_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+```
+
+`COUNT_STAR = 0` means zero I/O operations have been routed through this index since the last `performance_schema` reset. These indexes have not been used for any read or write operation.
+
+### Duplicate Indexes
+
+Source: `internal/adapter/mysql_indexes.go` — `GetDuplicateIndexes`
+
+MySQL lacks a native duplicate-detection view. DBSight queries `INFORMATION_SCHEMA.STATISTICS` to build per-index column lists, then detects prefix overlaps in application code:
+
+```sql
+SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME,
+       GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+  AND NON_UNIQUE = 1
+GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
+ORDER BY TABLE_SCHEMA, TABLE_NAME
+```
+
+After fetching results, DBSight checks whether one index's column list is a prefix of another's on the same table. For example, an index on `(user_id)` is redundant if another index on `(user_id, created_at)` already exists — the composite index covers all queries the single-column index would serve.
+
+### Table Statistics
+
+Source: `internal/adapter/mysql_indexes.go` — `GetTableStats`
+
+```sql
+SELECT
+    t.TABLE_SCHEMA,
+    t.TABLE_NAME,
+    IFNULL(p.COUNT_STAR, 0) AS seq_scans,
+    t.TABLE_ROWS,
+    t.DATA_LENGTH + t.INDEX_LENGTH AS table_size_bytes
+FROM information_schema.TABLES t
+LEFT JOIN performance_schema.table_io_waits_summary_by_index_usage p
+    ON p.OBJECT_SCHEMA = t.TABLE_SCHEMA
+    AND p.OBJECT_NAME = t.TABLE_NAME
+    AND p.INDEX_NAME IS NULL
+WHERE t.TABLE_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+  AND t.TABLE_TYPE = 'BASE TABLE'
+ORDER BY seq_scans DESC
+```
+
+The `LEFT JOIN` on `INDEX_NAME IS NULL` selects the `performance_schema` row that tracks full-table (no-index) I/O. `TABLE_ROWS` is an estimate from the InnoDB statistics — the actual value may differ by up to 50% on large tables.
+
+#### Column Descriptions
+
+| Column             | Type   | Description                                |
+| ------------------ | ------ | ------------------------------------------ |
+| `TABLE_SCHEMA`     | text   | Database (schema) name                     |
+| `TABLE_NAME`       | text   | Table name                                 |
+| `seq_scans`        | bigint | Full-scan I/O operations since last reset  |
+| `TABLE_ROWS`       | bigint | Estimated live row count (InnoDB estimate) |
+| `table_size_bytes` | bigint | Data size + index size in bytes            |
+
+</TabItem>
+  <TabItem label="MariaDB">
+
+## MariaDB Index & Table Statistics
+
+MariaDB uses the same `performance_schema` and `INFORMATION_SCHEMA` sources as MySQL, but does not provide the `sys` schema by default.
+
+### Index Usage (Unused Indexes)
+
+Source: `internal/adapter/mariadb_indexes.go` — `GetIndexStats`
+
+MariaDB always queries `performance_schema.table_io_waits_summary_by_index_usage` directly (no `sys` schema fallback):
+
+```sql
+SELECT OBJECT_SCHEMA, OBJECT_NAME, INDEX_NAME
+FROM performance_schema.table_io_waits_summary_by_index_usage
+WHERE INDEX_NAME IS NOT NULL AND COUNT_STAR = 0
+  AND OBJECT_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+```
+
+This requires `performance_schema` to be enabled. If the table is empty, no I/O has been recorded since startup or the last truncation — wait for the database to operate under normal load before interpreting results.
+
+### Duplicate Indexes
+
+Source: `internal/adapter/mariadb_indexes.go` — `GetDuplicateIndexes`
+
+The duplicate detection query is identical to MySQL's:
+
+```sql
+SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME,
+       GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+  AND NON_UNIQUE = 1
+GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
+ORDER BY TABLE_SCHEMA, TABLE_NAME
+```
+
+DBSight applies the same prefix-overlap detection in application code after fetching results.
+
+### Table Statistics
+
+Source: `internal/adapter/mariadb_indexes.go` — `GetTableStats`
+
+```sql
+SELECT
+    t.TABLE_SCHEMA,
+    t.TABLE_NAME,
+    IFNULL(p.COUNT_STAR, 0) AS seq_scans,
+    t.TABLE_ROWS,
+    t.DATA_LENGTH + t.INDEX_LENGTH AS table_size_bytes
+FROM information_schema.TABLES t
+LEFT JOIN performance_schema.table_io_waits_summary_by_index_usage p
+    ON p.OBJECT_SCHEMA = t.TABLE_SCHEMA
+    AND p.OBJECT_NAME = t.TABLE_NAME
+    AND p.INDEX_NAME IS NULL
+WHERE t.TABLE_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+  AND t.TABLE_TYPE = 'BASE TABLE'
+ORDER BY seq_scans DESC
+```
+
+Identical structure to the MySQL query. The same caveats apply: `TABLE_ROWS` is an InnoDB estimate, and `seq_scans` resets when `performance_schema` is truncated or the server restarts.
+
+### MariaDB vs MySQL Differences
+
+| Aspect                          | MySQL                       | MariaDB                               |
+| ------------------------------- | --------------------------- | ------------------------------------- |
+| `sys` schema available          | Yes (5.7.7+)                | Not by default                        |
+| Unused index primary source     | `sys.schema_unused_indexes` | `performance_schema` directly         |
+| `performance_schema` default    | ON in most distributions    | Must be enabled in some distributions |
+| `INFORMATION_SCHEMA.STATISTICS` | Available                   | Available (same schema)               |
+
+</TabItem>
+</Tabs>
 
 ## Related
 
 - [Index Analysis](/en/user-guide/index-analysis) — viewing and acting on index data in the UI
-- [pg_stat_statements](/en/sql-reference/pg-stat-statements) — slow query collection
+- [Slow Query Data Sources](/en/sql-reference/slow-query-sources) — slow query collection

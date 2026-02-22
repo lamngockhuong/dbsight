@@ -1,0 +1,219 @@
+---
+title: Slow Query Data Sources
+description: How DBSight collects slow query data from PostgreSQL, MySQL, and MariaDB
+sidebar:
+  label: Slow Query Data Sources
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+DBSight collects slow query data from database-specific statistics tables. The background worker queries these tables on each polling interval, stores a timestamped snapshot, and computes deltas between snapshots to reveal query throughput changes over time.
+
+<Tabs>
+  <TabItem label="PostgreSQL">
+
+## PostgreSQL: pg_stat_statements
+
+`pg_stat_statements` is a PostgreSQL extension that tracks execution statistics for every SQL statement executed against a database. DBSight queries this view on each worker tick to build slow-query snapshots and compute deltas between collections.
+
+### Enabling pg_stat_statements
+
+The extension requires two steps:
+
+**1. Add to `shared_preload_libraries` in `postgresql.conf`:**
+
+```ini
+shared_preload_libraries = 'pg_stat_statements'
+```
+
+Restart PostgreSQL after changing this setting.
+
+**2. Create the extension in your target database:**
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+```
+
+Verify it is active:
+
+```sql
+SELECT * FROM pg_stat_statements LIMIT 1;
+```
+
+If the query returns an error, the library was not loaded at startup.
+
+### Query Used by DBSight
+
+Source: `internal/adapter/slow_queries.go`
+
+```sql
+SELECT
+    queryid::text,
+    query,
+    calls,
+    total_exec_time,
+    mean_exec_time,
+    rows
+FROM pg_stat_statements
+WHERE mean_exec_time >= $1
+ORDER BY total_exec_time DESC
+LIMIT $2
+```
+
+#### Parameters
+
+| Parameter | Type    | Default | Description                                          |
+| --------- | ------- | ------- | ---------------------------------------------------- |
+| `$1`      | float64 | `0`     | Minimum mean execution time in milliseconds (filter) |
+| `$2`      | int     | `50`    | Maximum number of rows returned                      |
+
+Results are ordered by `total_exec_time DESC` so the most expensive queries (by cumulative cost) appear first.
+
+#### Column Descriptions
+
+| Column            | Type   | Description                                         |
+| ----------------- | ------ | --------------------------------------------------- |
+| `queryid`         | text   | Unique hash identifier for the normalized query     |
+| `query`           | text   | Normalized query text (literals replaced with `$n`) |
+| `calls`           | bigint | Total number of times the query was executed        |
+| `total_exec_time` | float8 | Cumulative execution time across all calls (ms)     |
+| `mean_exec_time`  | float8 | Average execution time per call (ms)                |
+| `rows`            | bigint | Total rows returned or affected across all calls    |
+
+</TabItem>
+  <TabItem label="MySQL">
+
+## MySQL: performance_schema
+
+MySQL 5.7+ and 8.0+ use `performance_schema.events_statements_summary_by_digest` to track per-query digest statistics. This table is available when `performance_schema` is enabled (the default in most installations).
+
+### Enabling performance_schema
+
+```sql
+-- Check if it is enabled
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Should return 'ON'
+```
+
+If disabled, add to `my.cnf` and restart:
+
+```ini
+[mysqld]
+performance_schema = ON
+```
+
+### Query Used by DBSight
+
+Source: `internal/adapter/mysql_slow_queries.go`
+
+```sql
+SELECT
+    IFNULL(DIGEST, '') AS query_id,
+    IFNULL(DIGEST_TEXT, '') AS query_text,
+    COUNT_STAR AS calls,
+    SUM_TIMER_WAIT / 1000000000 AS total_exec_ms,
+    (SUM_TIMER_WAIT / COUNT_STAR) / 1000000000 AS mean_exec_ms,
+    SUM_ROWS_EXAMINED AS rows_examined
+FROM performance_schema.events_statements_summary_by_digest
+WHERE SCHEMA_NAME NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+  AND COUNT_STAR > 0
+  AND (SUM_TIMER_WAIT / COUNT_STAR) / 1000000000 >= ?
+ORDER BY SUM_TIMER_WAIT DESC
+LIMIT ?
+```
+
+#### Parameters
+
+| Parameter | Type    | Default | Description                                          |
+| --------- | ------- | ------- | ---------------------------------------------------- |
+| `?` (1st) | float64 | `0`     | Minimum mean execution time in milliseconds (filter) |
+| `?` (2nd) | int     | `50`    | Maximum number of rows returned                      |
+
+#### Column Descriptions
+
+| Column              | Type   | Description                                                              |
+| ------------------- | ------ | ------------------------------------------------------------------------ |
+| `DIGEST`            | text   | SHA-256 hash of the normalized query (used as query ID)                  |
+| `DIGEST_TEXT`       | text   | Normalized query text (literals replaced with `?`)                       |
+| `COUNT_STAR`        | bigint | Total number of times the query was executed                             |
+| `SUM_TIMER_WAIT`    | bigint | Cumulative execution time in picoseconds — DBSight divides by 1e9 for ms |
+| `SUM_ROWS_EXAMINED` | bigint | Total rows examined across all executions                                |
+
+#### Timer Conversion
+
+MySQL stores timing values in picoseconds. DBSight converts them to milliseconds:
+
+```
+milliseconds = picoseconds / 1,000,000,000
+```
+
+</TabItem>
+  <TabItem label="MariaDB">
+
+## MariaDB: performance_schema
+
+MariaDB 10.x+ uses the same `performance_schema.events_statements_summary_by_digest` table as MySQL, but `performance_schema` must be explicitly enabled — it is **not** on by default in all MariaDB distributions.
+
+### Enabling performance_schema
+
+```sql
+-- Check if it is enabled
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Should return 'ON'
+```
+
+If disabled, add to `my.cnf` and restart:
+
+```ini
+[mysqld]
+performance_schema = ON
+```
+
+### Query Used by DBSight
+
+Source: `internal/adapter/mariadb_slow_queries.go`
+
+```sql
+SELECT
+    IFNULL(DIGEST, '') AS query_id,
+    IFNULL(DIGEST_TEXT, '') AS query_text,
+    COUNT_STAR AS calls,
+    SUM_TIMER_WAIT / 1000000000 AS total_exec_ms,
+    (SUM_TIMER_WAIT / COUNT_STAR) / 1000000000 AS mean_exec_ms,
+    SUM_ROWS_EXAMINED AS rows_examined
+FROM performance_schema.events_statements_summary_by_digest
+WHERE SCHEMA_NAME NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+  AND COUNT_STAR > 0
+  AND (SUM_TIMER_WAIT / COUNT_STAR) / 1000000000 >= ?
+ORDER BY SUM_TIMER_WAIT DESC
+LIMIT ?
+```
+
+The SQL is identical to the MySQL query. The key differences are operational:
+
+#### MariaDB vs MySQL Differences
+
+| Aspect                       | MySQL                    | MariaDB                                          |
+| ---------------------------- | ------------------------ | ------------------------------------------------ |
+| `performance_schema` default | ON in most distributions | OFF in some distributions — must enable manually |
+| `QUANTILE_95` column         | Available in MySQL 8.0+  | Not available in MariaDB                         |
+| `FIRST_SEEN` / `LAST_SEEN`   | Available                | Available (10.1+)                                |
+| Timer unit                   | Picoseconds              | Picoseconds                                      |
+
+DBSight uses only the columns common to both engines (`DIGEST`, `DIGEST_TEXT`, `COUNT_STAR`, `SUM_TIMER_WAIT`, `SUM_ROWS_EXAMINED`), so the adapter works without modification across both databases.
+
+</TabItem>
+</Tabs>
+
+## How DBSight Uses This Data
+
+**Snapshot collection** — the background worker (30-second default interval) calls `GetSlowQueries` for every active connection. Each result set is stored as a timestamped snapshot in the DBSight metadata database.
+
+**Delta tracking** — on each subsequent snapshot, DBSight computes the difference in `calls`, `total_exec_time`, and `rows` between the current and previous snapshot. This reveals query throughput changes over time rather than all-time totals.
+
+**Filtering** — the `MinMeanMs` option maps to the mean execution time filter parameter. Setting it above `0` excludes fast queries from snapshots, reducing storage and noise. Configure this per connection in the UI.
+
+## Related
+
+- [Slow Queries](/en/user-guide/slow-queries) — interpreting snapshot data in the UI
+- [Live Dashboard](/en/user-guide/live-dashboard) — real-time SSE stream of query deltas

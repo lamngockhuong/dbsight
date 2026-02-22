@@ -1,13 +1,20 @@
 ---
-title: EXPLAIN & ANALYZE
-description: How DBSight runs EXPLAIN plans safely with read-only transactions
+title: EXPLAIN Plans
+description: How DBSight runs EXPLAIN plans safely across PostgreSQL, MySQL, and MariaDB
 ---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+DBSight exposes query execution plans through the Query Detail drawer and the dedicated EXPLAIN panel. All EXPLAIN calls run inside read-only transactions to prevent accidental data modification.
+
+<Tabs>
+  <TabItem label="PostgreSQL">
+
+## PostgreSQL EXPLAIN
 
 `EXPLAIN` shows PostgreSQL's query execution plan — the sequence of operations the planner chose to satisfy a query. `EXPLAIN ANALYZE` actually executes the query and adds real timing and row counts alongside the estimates.
 
-DBSight exposes both modes through the Query Detail drawer and the dedicated EXPLAIN panel.
-
-## Safety Mechanism
+### Safety Mechanism
 
 Running arbitrary `EXPLAIN ANALYZE` statements carries risk: a malicious or accidental write query could modify data. DBSight mitigates this by wrapping every EXPLAIN in a read-only transaction that is always rolled back.
 
@@ -22,9 +29,9 @@ ROLLBACK;
 
 The `SET TRANSACTION READ ONLY` call causes PostgreSQL to reject any data-modifying operation within the transaction. The explicit `ROLLBACK` (via `defer tx.Rollback`) ensures no changes persist even if `READ ONLY` were somehow bypassed.
 
-## Two Execution Modes
+### Two Execution Modes
 
-### Estimate-only mode (no ANALYZE)
+#### Estimate-only mode (no ANALYZE)
 
 Used when `AnalyzeMode = false`. Returns the planner's cost estimates without executing the query. Safe for any query type and has zero runtime cost.
 
@@ -38,7 +45,7 @@ Use this mode when:
 - The query has write side-effects you want to avoid executing
 - You want instant results without waiting for execution
 
-### Full analyze mode
+#### Full analyze mode
 
 Used when `AnalyzeMode = true`. Executes the query inside the read-only transaction and returns actual row counts, loop counts, and per-node timing.
 
@@ -48,7 +55,7 @@ EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) <query>
 
 The `BUFFERS` option adds shared/local block hit and read counts, which reveals whether nodes are reading from cache or disk.
 
-## JSON Output Structure
+### JSON Output Structure
 
 DBSight requests `FORMAT JSON` for all plans. The top-level structure is an array with one element:
 
@@ -62,7 +69,7 @@ DBSight requests `FORMAT JSON` for all plans. The top-level structure is an arra
       "Plan Rows": 500,
       "Actual Rows": 487,
       "Actual Loops": 1,
-      "Plans": [ ... ]
+      "Plans": [ "..." ]
     }
   }
 ]
@@ -70,7 +77,7 @@ DBSight requests `FORMAT JSON` for all plans. The top-level structure is an arra
 
 Each node in `Plans` follows the same structure recursively.
 
-## Common Plan Node Types
+### Common Plan Node Types
 
 | Node Type          | Description                                                                                                                       |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -85,13 +92,181 @@ Each node in `Plans` follows the same structure recursively.
 | `Aggregate`        | Computes aggregate functions (COUNT, SUM, etc.).                                                                                  |
 | `Limit`            | Truncates output to N rows.                                                                                                       |
 
-## What to Look For
+### What to Look For
 
 - **High `Rows Removed by Filter`** on a `Seq Scan` — an index on the filter column would help.
-- **Estimated rows vs actual rows diverging by 10x or more** — stale statistics; run `ANALYZE <table>`.
+- **Estimated rows vs actual rows diverging by 10x or more** — stale statistics; run `ANALYZE` on the table.
 - **`Sort Method: external merge`** — sort spilled to disk; increase `work_mem`.
 - **`Shared Read Blocks` much higher than `Shared Hit Blocks`** — data not in cache; normal for cold queries, investigate if persistent.
 - **Nested Loop with many loops and no index on inner side** — consider adding an index or rewriting as a Hash Join.
+
+{/* */}
+
+</TabItem>
+  <TabItem label="MySQL">
+
+## MySQL EXPLAIN
+
+MySQL supports `EXPLAIN FORMAT=JSON` for plan estimates and `EXPLAIN ANALYZE` for actual execution stats (MySQL 8.0.18+ only). DBSight runs all EXPLAIN calls inside a read-only transaction.
+
+Source: `internal/adapter/mysql_explain.go`
+
+### Safety Mechanism
+
+```go
+tx, err := a.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+defer tx.Rollback()
+```
+
+DBSight uses Go's `database/sql` read-only transaction option, which maps to `START TRANSACTION READ ONLY` in MySQL. The transaction is always rolled back after the EXPLAIN call.
+
+### Two Execution Modes
+
+#### Estimate-only mode
+
+Used when `AnalyzeMode = false`. Works on all MySQL 5.7+ and 8.0+ connections.
+
+```sql
+EXPLAIN FORMAT=JSON <query>
+```
+
+Returns the optimizer's cost estimates as a JSON document without executing the query.
+
+#### Full analyze mode
+
+Used when `AnalyzeMode = true`. Requires **MySQL 8.0.18+** and a `SELECT` query. DBSight rejects non-SELECT queries in this mode to avoid accidental writes.
+
+```sql
+EXPLAIN ANALYZE <query>
+```
+
+MySQL's `EXPLAIN ANALYZE` returns output in TREE text format (not JSON). DBSight wraps the text in a JSON envelope for consistent handling:
+
+```json
+{ "format": "tree", "text": "-> Nested loop inner join  (cost=...)" }
+```
+
+### JSON Output Structure (FORMAT=JSON)
+
+```json
+{
+  "query_block": {
+    "select_id": 1,
+    "cost_info": {
+      "query_cost": "1.05"
+    },
+    "table": {
+      "table_name": "orders",
+      "access_type": "ref",
+      "key": "idx_user_id",
+      "rows_examined_per_scan": 3,
+      "rows_produced_per_join": 3,
+      "cost_info": {
+        "read_cost": "0.75",
+        "eval_cost": "0.30",
+        "prefix_cost": "1.05"
+      }
+    }
+  }
+}
+```
+
+### Key Fields
+
+| Field                    | Description                                             |
+| ------------------------ | ------------------------------------------------------- |
+| `access_type`            | How MySQL accesses the table (`ALL`, `ref`, `range`, …) |
+| `key`                    | Index used (if any)                                     |
+| `rows_examined_per_scan` | Estimated rows examined per scan                        |
+| `cost_info.query_cost`   | Optimizer's estimated total cost                        |
+
+### What to Look For
+
+- **`access_type: ALL`** — full table scan; consider adding an index on the filter/join column.
+- **`key: null`** — no index used; review `WHERE` and `JOIN` predicates.
+- **High `rows_examined_per_scan` relative to rows returned** — poor selectivity; a more specific index may help.
+
+{/* */}
+
+  </TabItem>
+  <TabItem label="MariaDB">
+
+## MariaDB EXPLAIN
+
+MariaDB supports `EXPLAIN FORMAT=JSON` for plan estimates and `ANALYZE FORMAT=JSON` for actual execution stats (MariaDB 10.1+). The key difference from MySQL is that MariaDB's analyze mode returns JSON rather than TREE text.
+
+Source: `internal/adapter/mariadb_explain.go`
+
+### Safety Mechanism
+
+```go
+tx, err := a.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+defer tx.Rollback()
+```
+
+Same read-only transaction approach as MySQL. The transaction is always rolled back.
+
+### Two Execution Modes
+
+#### Estimate-only mode
+
+Used when `AnalyzeMode = false`.
+
+```sql
+EXPLAIN FORMAT=JSON <query>
+```
+
+#### Full analyze mode
+
+Used when `AnalyzeMode = true`. Requires a `SELECT` query. MariaDB uses `ANALYZE FORMAT=JSON` (not `EXPLAIN ANALYZE` like MySQL) and returns JSON directly — no TREE text wrapping needed.
+
+```sql
+ANALYZE FORMAT=JSON <query>
+```
+
+### JSON Output Structure
+
+MariaDB's `EXPLAIN FORMAT=JSON` output follows a similar structure to MySQL but with some differences:
+
+```json
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "orders",
+      "access_type": "ref",
+      "key": "idx_user_id",
+      "key_length": "4",
+      "used_key_parts": ["user_id"],
+      "rows": 3,
+      "r_rows": 2.5,
+      "r_filtered": 100,
+      "filtered": 100
+    }
+  }
+}
+```
+
+### MariaDB vs MySQL Differences
+
+| Aspect               | MySQL                                 | MariaDB                                |
+| -------------------- | ------------------------------------- | -------------------------------------- |
+| Analyze command      | `EXPLAIN ANALYZE` (returns TREE text) | `ANALYZE FORMAT=JSON` (returns JSON)   |
+| Analyze availability | MySQL 8.0.18+                         | MariaDB 10.1+                          |
+| Actual row field     | Not in FORMAT=JSON output             | `r_rows` in ANALYZE FORMAT=JSON output |
+| Actual filter field  | Not in FORMAT=JSON output             | `r_filtered` in ANALYZE FORMAT=JSON    |
+
+### What to Look For
+
+- **`access_type: ALL`** — full table scan; add an index.
+- **`r_rows` much higher than `rows`** — actual execution differs significantly from estimates; run `ANALYZE TABLE` to refresh statistics.
+- **`r_filtered` far below `filtered`** — optimizer's row estimate is optimistic; index may not be selective enough.
+
+{/* */}
+
+  </TabItem>
+
+</Tabs>
 
 ## Related
 

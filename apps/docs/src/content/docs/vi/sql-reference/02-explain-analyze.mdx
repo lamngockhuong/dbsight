@@ -1,17 +1,26 @@
 ---
-title: EXPLAIN & ANALYZE
-description: Cách DBSight chạy các kế hoạch EXPLAIN an toàn với giao dịch chỉ đọc
+title: Kế hoạch EXPLAIN
+description: Cách DBSight chạy các kế hoạch EXPLAIN an toàn trên PostgreSQL, MySQL và MariaDB
+sidebar:
+  label: Kế hoạch EXPLAIN
 ---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+DBSight cung cấp kế hoạch thực thi truy vấn thông qua ngăn kéo Chi tiết Truy vấn và bảng EXPLAIN chuyên dụng. Tất cả các lệnh gọi EXPLAIN đều chạy trong giao dịch chỉ đọc để ngăn chặn sửa đổi dữ liệu ngoài ý muốn.
+
+<Tabs>
+  <TabItem label="PostgreSQL">
+
+## PostgreSQL EXPLAIN
 
 `EXPLAIN` hiển thị kế hoạch thực thi truy vấn của PostgreSQL — chuỗi các thao tác mà trình lập kế hoạch đã chọn để đáp ứng một truy vấn. `EXPLAIN ANALYZE` thực sự thực thi truy vấn và thêm thời gian thực tế cùng số lượng hàng thực bên cạnh các ước tính.
 
-DBSight cung cấp cả hai chế độ thông qua ngăn kéo Chi tiết Truy vấn và bảng EXPLAIN chuyên dụng.
-
-## Cơ chế Bảo mật
+### Cơ chế Bảo mật
 
 Chạy các câu lệnh `EXPLAIN ANALYZE` tùy ý tiềm ẩn rủi ro: một truy vấn ghi độc hại hoặc vô tình có thể làm thay đổi dữ liệu. DBSight giảm thiểu rủi ro này bằng cách bọc mỗi EXPLAIN trong một giao dịch chỉ đọc luôn được rollback.
 
-Nguồn: `internal/adapter/explain.go`
+Nguồn: `internal/adapter/postgres_explain.go`
 
 ```sql
 BEGIN;
@@ -22,9 +31,9 @@ ROLLBACK;
 
 Lệnh `SET TRANSACTION READ ONLY` khiến PostgreSQL từ chối mọi thao tác sửa đổi dữ liệu trong giao dịch. Lệnh `ROLLBACK` tường minh (thông qua `defer tx.Rollback`) đảm bảo không có thay đổi nào được lưu lại ngay cả khi `READ ONLY` bị bỏ qua bằng cách nào đó.
 
-## Hai Chế độ Thực thi
+### Hai Chế độ Thực thi
 
-### Chế độ chỉ ước tính (không có ANALYZE)
+#### Chế độ chỉ ước tính (không có ANALYZE)
 
 Được sử dụng khi `AnalyzeMode = false`. Trả về ước tính chi phí của trình lập kế hoạch mà không thực thi truy vấn. An toàn cho mọi loại truy vấn và không có chi phí thời gian chạy.
 
@@ -38,7 +47,7 @@ Sử dụng chế độ này khi:
 - Truy vấn có hiệu ứng phụ ghi mà bạn muốn tránh thực thi
 - Bạn muốn kết quả ngay lập tức mà không cần chờ thực thi
 
-### Chế độ phân tích đầy đủ
+#### Chế độ phân tích đầy đủ
 
 Được sử dụng khi `AnalyzeMode = true`. Thực thi truy vấn trong giao dịch chỉ đọc và trả về số hàng thực tế, số lần lặp và thời gian trên từng nút.
 
@@ -48,7 +57,7 @@ EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) <query>
 
 Tùy chọn `BUFFERS` thêm số lần đọc và hit khối dùng chung/cục bộ, cho thấy liệu các nút đang đọc từ bộ nhớ cache hay đĩa.
 
-## Cấu trúc Đầu ra JSON
+### Cấu trúc Đầu ra JSON
 
 DBSight yêu cầu `FORMAT JSON` cho tất cả các kế hoạch. Cấu trúc cấp cao nhất là một mảng có một phần tử:
 
@@ -62,7 +71,7 @@ DBSight yêu cầu `FORMAT JSON` cho tất cả các kế hoạch. Cấu trúc c
       "Plan Rows": 500,
       "Actual Rows": 487,
       "Actual Loops": 1,
-      "Plans": [ ... ]
+      "Plans": [ "..." ]
     }
   }
 ]
@@ -70,7 +79,7 @@ DBSight yêu cầu `FORMAT JSON` cho tất cả các kế hoạch. Cấu trúc c
 
 Mỗi nút trong `Plans` theo cùng một cấu trúc đệ quy.
 
-## Các Loại Nút Kế hoạch Phổ biến
+### Các Loại Nút Kế hoạch Phổ biến
 
 | Loại nút           | Mô tả                                                                                                                            |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -85,13 +94,181 @@ Mỗi nút trong `Plans` theo cùng một cấu trúc đệ quy.
 | `Aggregate`        | Tính toán các hàm tổng hợp (COUNT, SUM, v.v.).                                                                                   |
 | `Limit`            | Cắt bớt đầu ra còn N hàng.                                                                                                       |
 
-## Những Điều Cần Chú ý
+### Những Điều Cần Chú ý
 
 - **`Rows Removed by Filter` cao** trên `Seq Scan` — một chỉ mục trên cột lọc sẽ giúp ích.
-- **Số hàng ước tính vs thực tế chênh lệch 10 lần trở lên** — thống kê cũ; chạy `ANALYZE <table>`.
+- **Số hàng ước tính vs thực tế chênh lệch 10 lần trở lên** — thống kê cũ; chạy `ANALYZE` trên bảng.
 - **`Sort Method: external merge`** — sắp xếp tràn ra đĩa; tăng `work_mem`.
 - **`Shared Read Blocks` cao hơn nhiều so với `Shared Hit Blocks`** — dữ liệu không có trong cache; bình thường với truy vấn lạnh, cần điều tra nếu liên tục xảy ra.
 - **Nested Loop với nhiều vòng lặp và không có chỉ mục ở phía trong** — cân nhắc thêm chỉ mục hoặc viết lại thành Hash Join.
+
+{/* */}
+
+  </TabItem>
+  <TabItem label="MySQL">
+
+## MySQL EXPLAIN
+
+MySQL hỗ trợ `EXPLAIN FORMAT=JSON` để ước tính kế hoạch và `EXPLAIN ANALYZE` để xem thống kê thực thi thực tế (chỉ MySQL 8.0.18+). DBSight chạy tất cả các lệnh gọi EXPLAIN trong giao dịch chỉ đọc.
+
+Nguồn: `internal/adapter/mysql_explain.go`
+
+### Cơ chế Bảo mật
+
+```go
+tx, err := a.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+defer tx.Rollback()
+```
+
+DBSight sử dụng tùy chọn giao dịch chỉ đọc của Go `database/sql`, ánh xạ tới `START TRANSACTION READ ONLY` trong MySQL. Giao dịch luôn được rollback sau lệnh gọi EXPLAIN.
+
+### Hai Chế độ Thực thi
+
+#### Chế độ chỉ ước tính
+
+Được sử dụng khi `AnalyzeMode = false`. Hoạt động trên tất cả các kết nối MySQL 5.7+ và 8.0+.
+
+```sql
+EXPLAIN FORMAT=JSON <query>
+```
+
+Trả về ước tính chi phí của optimizer dưới dạng tài liệu JSON mà không thực thi truy vấn.
+
+#### Chế độ phân tích đầy đủ
+
+Được sử dụng khi `AnalyzeMode = true`. Yêu cầu **MySQL 8.0.18+** và truy vấn `SELECT`. DBSight từ chối các truy vấn không phải SELECT ở chế độ này để tránh ghi ngoài ý muốn.
+
+```sql
+EXPLAIN ANALYZE <query>
+```
+
+`EXPLAIN ANALYZE` của MySQL trả về đầu ra ở định dạng văn bản TREE (không phải JSON). DBSight bọc văn bản trong một JSON envelope để xử lý nhất quán:
+
+```json
+{ "format": "tree", "text": "-> Nested loop inner join  (cost=...)" }
+```
+
+### Cấu trúc Đầu ra JSON (FORMAT=JSON)
+
+```json
+{
+  "query_block": {
+    "select_id": 1,
+    "cost_info": {
+      "query_cost": "1.05"
+    },
+    "table": {
+      "table_name": "orders",
+      "access_type": "ref",
+      "key": "idx_user_id",
+      "rows_examined_per_scan": 3,
+      "rows_produced_per_join": 3,
+      "cost_info": {
+        "read_cost": "0.75",
+        "eval_cost": "0.30",
+        "prefix_cost": "1.05"
+      }
+    }
+  }
+}
+```
+
+### Các Trường Quan trọng
+
+| Trường                   | Mô tả                                               |
+| ------------------------ | --------------------------------------------------- |
+| `access_type`            | Cách MySQL truy cập bảng (`ALL`, `ref`, `range`, …) |
+| `key`                    | Chỉ mục được sử dụng (nếu có)                       |
+| `rows_examined_per_scan` | Số hàng ước tính được kiểm tra mỗi lần quét         |
+| `cost_info.query_cost`   | Tổng chi phí ước tính của optimizer                 |
+
+### Những Điều Cần Chú ý
+
+- **`access_type: ALL`** — quét toàn bộ bảng; cân nhắc thêm chỉ mục trên cột lọc/join.
+- **`key: null`** — không có chỉ mục nào được sử dụng; xem lại vị từ `WHERE` và `JOIN`.
+- **`rows_examined_per_scan` cao so với số hàng trả về** — tính chọn lọc kém; một chỉ mục cụ thể hơn có thể giúp ích.
+
+{/* */}
+
+  </TabItem>
+  <TabItem label="MariaDB">
+
+## MariaDB EXPLAIN
+
+MariaDB hỗ trợ `EXPLAIN FORMAT=JSON` để ước tính kế hoạch và `ANALYZE FORMAT=JSON` để xem thống kê thực thi thực tế (MariaDB 10.1+). Điểm khác biệt chính so với MySQL là chế độ analyze của MariaDB trả về JSON thay vì văn bản TREE.
+
+Nguồn: `internal/adapter/mariadb_explain.go`
+
+### Cơ chế Bảo mật
+
+```go
+tx, err := a.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+defer tx.Rollback()
+```
+
+Cùng cách tiếp cận giao dịch chỉ đọc như MySQL. Giao dịch luôn được rollback.
+
+### Hai Chế độ Thực thi
+
+#### Chế độ chỉ ước tính
+
+Được sử dụng khi `AnalyzeMode = false`.
+
+```sql
+EXPLAIN FORMAT=JSON <query>
+```
+
+#### Chế độ phân tích đầy đủ
+
+Được sử dụng khi `AnalyzeMode = true`. Yêu cầu truy vấn `SELECT`. MariaDB dùng `ANALYZE FORMAT=JSON` (không phải `EXPLAIN ANALYZE` như MySQL) và trả về JSON trực tiếp — không cần bọc văn bản TREE.
+
+```sql
+ANALYZE FORMAT=JSON <query>
+```
+
+### Cấu trúc Đầu ra JSON
+
+Đầu ra `EXPLAIN FORMAT=JSON` của MariaDB theo cấu trúc tương tự MySQL nhưng có một số điểm khác biệt:
+
+```json
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "orders",
+      "access_type": "ref",
+      "key": "idx_user_id",
+      "key_length": "4",
+      "used_key_parts": ["user_id"],
+      "rows": 3,
+      "r_rows": 2.5,
+      "r_filtered": 100,
+      "filtered": 100
+    }
+  }
+}
+```
+
+### So sánh MariaDB và MySQL
+
+| Khía cạnh              | MySQL                                   | MariaDB                                   |
+| ---------------------- | --------------------------------------- | ----------------------------------------- |
+| Lệnh analyze           | `EXPLAIN ANALYZE` (trả về văn bản TREE) | `ANALYZE FORMAT=JSON` (trả về JSON)       |
+| Yêu cầu phiên bản      | MySQL 8.0.18+                           | MariaDB 10.1+                             |
+| Trường số hàng thực tế | Không có trong đầu ra FORMAT=JSON       | `r_rows` trong đầu ra ANALYZE FORMAT=JSON |
+| Trường filter thực tế  | Không có trong đầu ra FORMAT=JSON       | `r_filtered` trong ANALYZE FORMAT=JSON    |
+
+### Những Điều Cần Chú ý
+
+- **`access_type: ALL`** — quét toàn bộ bảng; thêm chỉ mục.
+- **`r_rows` cao hơn nhiều so với `rows`** — thực thi thực tế khác đáng kể so với ước tính; chạy `ANALYZE TABLE` để làm mới thống kê.
+- **`r_filtered` thấp hơn nhiều so với `filtered`** — ước tính số hàng của optimizer quá lạc quan; chỉ mục có thể không đủ chọn lọc.
+
+{/* */}
+
+  </TabItem>
+
+</Tabs>
 
 ## Xem thêm
 

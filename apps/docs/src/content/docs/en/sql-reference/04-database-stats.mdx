@@ -1,11 +1,16 @@
 ---
 title: Database Statistics
-description: SQL queries for database size, connections, and cache hit ratio
+description: SQL queries for database size, connections, and cache hit ratio across PostgreSQL, MySQL, and MariaDB
 ---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 DBSight collects a single high-level metrics snapshot per database on every worker tick. These metrics power the summary cards and sparklines at the top of the Live Dashboard.
 
-## Query Used by DBSight
+<Tabs>
+  <TabItem label="PostgreSQL">
+
+## PostgreSQL Database Statistics
 
 Source: `internal/adapter/stats.go` — `GetDatabaseStats`
 
@@ -24,9 +29,9 @@ FROM pg_stat_database WHERE datname = current_database()
 
 The query selects from `pg_stat_database` filtered to the current database, combining it with a correlated subquery for active connections and a `current_setting` call for the configured connection limit.
 
-## Metrics Reference
+### Metrics Reference
 
-### Database Name
+#### Database Name
 
 ```sql
 current_database()
@@ -34,7 +39,7 @@ current_database()
 
 Returns the name of the database the connection is authenticated against. Used as the display label in the dashboard header.
 
-### Database Size
+#### Database Size
 
 ```sql
 pg_database_size(current_database())
@@ -42,7 +47,7 @@ pg_database_size(current_database())
 
 Returns the total on-disk size of the database in bytes, including all tables, indexes, and TOAST data. DBSight formats this into human-readable units (KB / MB / GB) for display.
 
-### Active Connections
+#### Active Connections
 
 ```sql
 (SELECT count(*) FROM pg_stat_activity WHERE state = 'active')
@@ -57,7 +62,7 @@ Counts connections currently executing a query (`state = 'active'`). This exclud
 | `idle in transaction`    | Inside a BEGIN block, not currently executing |
 | `fastpath function call` | Executing a fast-path function                |
 
-### Max Connections
+#### Max Connections
 
 ```sql
 current_setting('max_connections')::int
@@ -65,7 +70,7 @@ current_setting('max_connections')::int
 
 The server-wide connection limit from `postgresql.conf`. DBSight displays active connections alongside this value so you can see headroom at a glance.
 
-### Cache Hit Ratio
+#### Cache Hit Ratio
 
 ```sql
 ROUND(
@@ -85,6 +90,135 @@ The percentage of block reads served from PostgreSQL's shared buffer cache rathe
 
 A low cache hit ratio does not always mean misconfiguration. Databases larger than available RAM will always have some disk reads; the key is whether the ratio is declining over time.
 
+</TabItem>
+  <TabItem label="MySQL">
+
+## MySQL Database Statistics
+
+MySQL does not provide a single system view for all database-level metrics. DBSight issues multiple queries to `SHOW GLOBAL STATUS`, `SHOW VARIABLES`, and `information_schema.TABLES`.
+
+Source: `internal/adapter/mysql_stats.go` — `GetDatabaseStats`
+
+### Database Name
+
+```sql
+SELECT DATABASE()
+```
+
+Returns the name of the currently selected database.
+
+### Database Size
+
+```sql
+SELECT IFNULL(SUM(data_length + index_length), 0)
+FROM information_schema.TABLES
+WHERE table_schema = DATABASE()
+```
+
+Sums `data_length` (row data) and `index_length` (index data) for all tables in the current database. This is an estimate based on InnoDB statistics; run `ANALYZE TABLE` on key tables for more accurate values.
+
+### Active Connections
+
+```sql
+SHOW GLOBAL STATUS LIKE 'Threads_connected'
+```
+
+Returns the current number of open client connections. Unlike PostgreSQL's `pg_stat_activity`, this counts all connected threads regardless of their current state (active, idle, waiting).
+
+### Max Connections
+
+```sql
+SHOW VARIABLES LIKE 'max_connections'
+```
+
+The server-wide connection limit from `my.cnf` or set at runtime with `SET GLOBAL max_connections`.
+
+### InnoDB Buffer Pool Cache Hit Ratio
+
+DBSight computes the cache hit ratio from two status variables:
+
+```sql
+SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_reads'
+SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_read_requests'
+```
+
+The ratio is calculated as:
+
+```
+cache_hit_ratio = (1 - Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests) * 100
+```
+
+| Variable                           | Description                                       |
+| ---------------------------------- | ------------------------------------------------- |
+| `Innodb_buffer_pool_reads`         | Physical disk reads (cache misses)                |
+| `Innodb_buffer_pool_read_requests` | Total logical read requests (cache hits + misses) |
+
+These are cumulative counters since server start. A high ratio (> 99%) indicates most reads are served from the InnoDB buffer pool.
+
+| Range     | Status   | Interpretation                                                           |
+| --------- | -------- | ------------------------------------------------------------------------ |
+| >= 99%    | Good     | Nearly all reads from buffer pool memory.                                |
+| 95% – 99% | Warning  | Some disk reads. May be acceptable depending on dataset size.            |
+| < 95%     | Critical | Significant disk I/O. Consider increasing `innodb_buffer_pool_size`.     |
+| `0`       | N/A      | No read requests yet — server just started or no InnoDB tables accessed. |
+
+</TabItem>
+  <TabItem label="MariaDB">
+
+## MariaDB Database Statistics
+
+MariaDB uses the same query approach as MySQL. Both engines share the `SHOW GLOBAL STATUS`, `SHOW VARIABLES`, and `information_schema.TABLES` interfaces.
+
+Source: `internal/adapter/mariadb_stats.go` — `GetDatabaseStats`
+
+### Database Name
+
+```sql
+SELECT DATABASE()
+```
+
+### Database Size
+
+```sql
+SELECT IFNULL(SUM(data_length + index_length), 0)
+FROM information_schema.TABLES
+WHERE table_schema = DATABASE()
+```
+
+### Active Connections
+
+```sql
+SHOW GLOBAL STATUS LIKE 'Threads_connected'
+```
+
+### Max Connections
+
+```sql
+SHOW VARIABLES LIKE 'max_connections'
+```
+
+### InnoDB Buffer Pool Cache Hit Ratio
+
+```sql
+SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_reads'
+SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_read_requests'
+```
+
+Calculated identically to MySQL:
+
+```
+cache_hit_ratio = (1 - Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests) * 100
+```
+
+### MariaDB vs MySQL Differences
+
+The database statistics queries are functionally identical between MySQL and MariaDB. Both engines expose the same `SHOW GLOBAL STATUS` variables and `information_schema.TABLES` schema. There are no behavioral differences for this set of metrics.
+
+One operational note: MariaDB may report `Threads_connected` slightly differently than MySQL when thread pooling is enabled (`thread_handling = pool-of-threads`). In that configuration, `Threads_connected` reflects logical connections rather than OS threads.
+
+</TabItem>
+</Tabs>
+
 ## How DBSight Displays These Metrics
 
 The four values map directly to the summary cards on the Live Dashboard:
@@ -99,4 +233,4 @@ All four refresh on every SSE tick alongside the slow query stream, so the dashb
 ## Related
 
 - [Live Dashboard](/en/user-guide/live-dashboard) — viewing these metrics in the UI
-- [pg_stat_statements](/en/sql-reference/pg-stat-statements) — slow query collection that runs on the same worker tick
+- [Slow Query Data Sources](/en/sql-reference/slow-query-sources) — slow query collection that runs on the same worker tick

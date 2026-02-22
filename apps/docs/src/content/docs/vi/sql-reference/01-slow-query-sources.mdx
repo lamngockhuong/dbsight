@@ -1,0 +1,219 @@
+---
+title: Nguồn Dữ Liệu Truy Vấn Chậm
+description: Cách DBSight thu thập dữ liệu truy vấn chậm từ PostgreSQL, MySQL và MariaDB
+sidebar:
+  label: Nguồn Dữ Liệu Truy Vấn Chậm
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+DBSight thu thập dữ liệu truy vấn chậm từ các bảng thống kê riêng của từng loại cơ sở dữ liệu. Worker nền truy vấn các bảng này theo mỗi chu kỳ polling, lưu trữ một snapshot có dấu thời gian và tính toán delta giữa các snapshot để phát hiện thay đổi thông lượng truy vấn theo thời gian.
+
+<Tabs>
+  <TabItem label="PostgreSQL">
+
+## PostgreSQL: pg_stat_statements
+
+`pg_stat_statements` là một extension của PostgreSQL theo dõi thống kê thực thi cho mọi câu lệnh SQL được thực thi đối với một cơ sở dữ liệu. DBSight truy vấn view này mỗi lần Worker chạy để tạo snapshot các truy vấn chậm và tính toán các delta giữa các lần thu thập.
+
+### Kích hoạt pg_stat_statements
+
+Extension này yêu cầu hai bước:
+
+**1. Thêm vào `shared_preload_libraries` trong `postgresql.conf`:**
+
+```ini
+shared_preload_libraries = 'pg_stat_statements'
+```
+
+Khởi động lại PostgreSQL sau khi thay đổi cài đặt này.
+
+**2. Tạo extension trong cơ sở dữ liệu đích:**
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+```
+
+Xác nhận extension đang hoạt động:
+
+```sql
+SELECT * FROM pg_stat_statements LIMIT 1;
+```
+
+Nếu truy vấn trả về lỗi, thư viện chưa được tải khi khởi động.
+
+### Truy vấn DBSight Sử Dụng
+
+Nguồn: `internal/adapter/postgres_slow_queries.go`
+
+```sql
+SELECT
+    queryid::text,
+    query,
+    calls,
+    total_exec_time,
+    mean_exec_time,
+    rows
+FROM pg_stat_statements
+WHERE mean_exec_time >= $1
+ORDER BY total_exec_time DESC
+LIMIT $2
+```
+
+#### Tham số
+
+| Tham số | Kiểu    | Mặc định | Mô tả                                                                |
+| ------- | ------- | -------- | -------------------------------------------------------------------- |
+| `$1`    | float64 | `0`      | Thời gian thực thi trung bình tối thiểu tính bằng mili giây (bộ lọc) |
+| `$2`    | int     | `50`     | Số hàng trả về tối đa                                                |
+
+Kết quả được sắp xếp theo `total_exec_time DESC` để các truy vấn tốn kém nhất (theo chi phí tích lũy) xuất hiện đầu tiên.
+
+#### Mô tả các cột
+
+| Cột               | Kiểu   | Mô tả                                                                |
+| ----------------- | ------ | -------------------------------------------------------------------- |
+| `queryid`         | text   | Mã định danh hash duy nhất cho truy vấn đã chuẩn hóa                 |
+| `query`           | text   | Văn bản truy vấn đã chuẩn hóa (các giá trị thực được thay bằng `$n`) |
+| `calls`           | bigint | Tổng số lần truy vấn được thực thi                                   |
+| `total_exec_time` | float8 | Tổng thời gian thực thi cộng dồn trên tất cả các lần gọi (ms)        |
+| `mean_exec_time`  | float8 | Thời gian thực thi trung bình mỗi lần gọi (ms)                       |
+| `rows`            | bigint | Tổng số hàng trả về hoặc bị ảnh hưởng trên tất cả các lần gọi        |
+
+</TabItem>
+  <TabItem label="MySQL">
+
+## MySQL: performance_schema
+
+MySQL 5.7+ và 8.0+ sử dụng `performance_schema.events_statements_summary_by_digest` để theo dõi thống kê digest cho từng truy vấn. Bảng này khả dụng khi `performance_schema` được bật (mặc định trong hầu hết các bản cài đặt).
+
+### Kích hoạt performance_schema
+
+```sql
+-- Kiểm tra xem đã được bật chưa
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Kết quả phải là 'ON'
+```
+
+Nếu bị tắt, thêm vào `my.cnf` và khởi động lại:
+
+```ini
+[mysqld]
+performance_schema = ON
+```
+
+### Truy vấn DBSight Sử Dụng
+
+Nguồn: `internal/adapter/mysql_slow_queries.go`
+
+```sql
+SELECT
+    IFNULL(DIGEST, '') AS query_id,
+    IFNULL(DIGEST_TEXT, '') AS query_text,
+    COUNT_STAR AS calls,
+    SUM_TIMER_WAIT / 1000000000 AS total_exec_ms,
+    (SUM_TIMER_WAIT / COUNT_STAR) / 1000000000 AS mean_exec_ms,
+    SUM_ROWS_EXAMINED AS rows_examined
+FROM performance_schema.events_statements_summary_by_digest
+WHERE SCHEMA_NAME NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+  AND COUNT_STAR > 0
+  AND (SUM_TIMER_WAIT / COUNT_STAR) / 1000000000 >= ?
+ORDER BY SUM_TIMER_WAIT DESC
+LIMIT ?
+```
+
+#### Tham số
+
+| Tham số     | Kiểu    | Mặc định | Mô tả                                                                |
+| ----------- | ------- | -------- | -------------------------------------------------------------------- |
+| `?` (thứ 1) | float64 | `0`      | Thời gian thực thi trung bình tối thiểu tính bằng mili giây (bộ lọc) |
+| `?` (thứ 2) | int     | `50`     | Số hàng trả về tối đa                                                |
+
+#### Mô tả các cột
+
+| Cột                 | Kiểu   | Mô tả                                                                               |
+| ------------------- | ------ | ----------------------------------------------------------------------------------- |
+| `DIGEST`            | text   | Hash SHA-256 của truy vấn đã chuẩn hóa (dùng làm query ID)                          |
+| `DIGEST_TEXT`       | text   | Văn bản truy vấn đã chuẩn hóa (các giá trị thực được thay bằng `?`)                 |
+| `COUNT_STAR`        | bigint | Tổng số lần truy vấn được thực thi                                                  |
+| `SUM_TIMER_WAIT`    | bigint | Tổng thời gian thực thi tính bằng picosecond — DBSight chia cho 1e9 để ra mili giây |
+| `SUM_ROWS_EXAMINED` | bigint | Tổng số hàng được kiểm tra trên tất cả các lần thực thi                             |
+
+#### Quy đổi Timer
+
+MySQL lưu trữ giá trị thời gian tính bằng picosecond. DBSight quy đổi sang mili giây:
+
+```
+milliseconds = picoseconds / 1.000.000.000
+```
+
+</TabItem>
+  <TabItem label="MariaDB">
+
+## MariaDB: performance_schema
+
+MariaDB 10.x+ sử dụng cùng bảng `performance_schema.events_statements_summary_by_digest` như MySQL, nhưng `performance_schema` phải được bật tường minh — nó **không** được bật mặc định trong tất cả các bản phân phối MariaDB.
+
+### Kích hoạt performance_schema
+
+```sql
+-- Kiểm tra xem đã được bật chưa
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Kết quả phải là 'ON'
+```
+
+Nếu bị tắt, thêm vào `my.cnf` và khởi động lại:
+
+```ini
+[mysqld]
+performance_schema = ON
+```
+
+### Truy vấn DBSight Sử Dụng
+
+Nguồn: `internal/adapter/mariadb_slow_queries.go`
+
+```sql
+SELECT
+    IFNULL(DIGEST, '') AS query_id,
+    IFNULL(DIGEST_TEXT, '') AS query_text,
+    COUNT_STAR AS calls,
+    SUM_TIMER_WAIT / 1000000000 AS total_exec_ms,
+    (SUM_TIMER_WAIT / COUNT_STAR) / 1000000000 AS mean_exec_ms,
+    SUM_ROWS_EXAMINED AS rows_examined
+FROM performance_schema.events_statements_summary_by_digest
+WHERE SCHEMA_NAME NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+  AND COUNT_STAR > 0
+  AND (SUM_TIMER_WAIT / COUNT_STAR) / 1000000000 >= ?
+ORDER BY SUM_TIMER_WAIT DESC
+LIMIT ?
+```
+
+SQL giống hệt truy vấn MySQL. Các điểm khác biệt chính là về mặt vận hành:
+
+#### So sánh MariaDB và MySQL
+
+| Khía cạnh                     | MySQL                          | MariaDB                                            |
+| ----------------------------- | ------------------------------ | -------------------------------------------------- |
+| Mặc định `performance_schema` | ON trong hầu hết bản phân phối | OFF trong một số bản phân phối — phải bật thủ công |
+| Cột `QUANTILE_95`             | Có trong MySQL 8.0+            | Không có trong MariaDB                             |
+| `FIRST_SEEN` / `LAST_SEEN`    | Có                             | Có (10.1+)                                         |
+| Đơn vị timer                  | Picosecond                     | Picosecond                                         |
+
+DBSight chỉ sử dụng các cột chung giữa cả hai engine (`DIGEST`, `DIGEST_TEXT`, `COUNT_STAR`, `SUM_TIMER_WAIT`, `SUM_ROWS_EXAMINED`), nên adapter hoạt động mà không cần sửa đổi trên cả hai cơ sở dữ liệu.
+
+</TabItem>
+</Tabs>
+
+## Cách DBSight Sử Dụng Dữ Liệu Này
+
+**Thu thập Snapshot** — Worker nền (mặc định 30 giây) gọi `GetSlowQueries` cho mọi kết nối đang hoạt động. Mỗi tập kết quả được lưu trữ dưới dạng Snapshot có dấu thời gian trong cơ sở dữ liệu metadata của DBSight.
+
+**Theo dõi Delta** — Ở mỗi Snapshot tiếp theo, DBSight tính toán sự khác biệt về `calls`, `total_exec_time` và `rows` giữa Snapshot hiện tại và Snapshot trước đó. Điều này cho thấy sự thay đổi thông lượng truy vấn theo thời gian thay vì tổng số liệu từ trước đến nay.
+
+**Lọc** — Tùy chọn `MinMeanMs` ánh xạ tới tham số bộ lọc thời gian thực thi trung bình. Đặt giá trị này lớn hơn `0` để loại trừ các truy vấn nhanh khỏi các Snapshot, giảm dung lượng lưu trữ và nhiễu. Cấu hình theo từng kết nối trong giao diện người dùng.
+
+## Xem thêm
+
+- [Truy vấn chậm](/vi/user-guide/slow-queries) — diễn giải dữ liệu Snapshot trong giao diện người dùng
+- [Bảng điều khiển trực tiếp](/vi/user-guide/live-dashboard) — luồng SSE theo thời gian thực của các delta truy vấn
