@@ -48,13 +48,7 @@ func (h *Handler) GetIndexAnalysis(w http.ResponseWriter, r *http.Request) {
 	allStats, _ := a.GetIndexStats(ctx)
 	tableStats, _ := a.GetTableStats(ctx)
 
-	// Need type assertion for duplicate index support
-	var duplicates []models.DuplicateIndex
-	if pa, ok := a.(interface {
-		GetDuplicateIndexes(context.Context) ([]models.DuplicateIndex, error)
-	}); ok {
-		duplicates, _ = pa.GetDuplicateIndexes(ctx)
-	}
+	duplicates, _ := a.GetDuplicateIndexes(ctx)
 
 	var unused []models.IndexStat
 	for _, s := range allStats {
