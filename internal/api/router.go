@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -56,10 +57,21 @@ func spaHandler(staticFS fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(staticFS))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+		// Check if the file exists in static assets
 		f, err := staticFS.Open(path)
 		if err != nil {
-			r.URL.Path = "/index.html"
-			fileServer.ServeHTTP(w, r)
+			// SPA fallback: serve index.html directly to avoid redirect loop
+			indexFile, indexErr := staticFS.Open("index.html")
+			if indexErr != nil {
+				http.NotFound(w, r)
+				return
+			}
+			defer indexFile.Close()
+			stat, _ := indexFile.(fs.File).Stat()
+			http.ServeContent(w, r, "index.html", stat.ModTime(), indexFile.(io.ReadSeeker))
 			return
 		}
 		f.Close()

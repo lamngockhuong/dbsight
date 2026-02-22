@@ -119,7 +119,7 @@ POST           /api/paste/queries                      — Parse slow log text
 
 | Variable               | Default    | Description                                            |
 | ---------------------- | ---------- | ------------------------------------------------------ |
-| `PORT`                 | `42198`     | HTTP server port                                       |
+| `PORT`                 | `42198`    | HTTP server port                                       |
 | `DATABASE_URL`         | (required) | PostgreSQL connection string for app metadata DB       |
 | `ENCRYPTION_KEY`       | (required) | 64 hex chars (32 bytes) for AES-256-GCM DSN encryption |
 | `WORKER_INTERVAL_SECS` | `30`       | Background worker polling interval                     |

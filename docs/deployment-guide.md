@@ -20,7 +20,7 @@ docker-compose up -d postgres
 
 # Generate encryption key
 export ENCRYPTION_KEY=$(openssl rand -hex 32)
-export DATABASE_URL="postgres://dbanalyzer:secret@localhost:5432/dbanalyzer?sslmode=disable"
+export DATABASE_URL="postgres://dbsight:secret@localhost:5499/dbsight?sslmode=disable"
 
 # Run migrations
 go run . migrate
@@ -44,10 +44,10 @@ If PostgreSQL is already running locally:
 
 ```bash
 # Create app database
-createdb -U postgres dbanalyzer
+createdb -U postgres dbsight
 
 # Set environment
-export DATABASE_URL="postgres://postgres:password@localhost:5432/dbanalyzer"
+export DATABASE_URL="postgres://postgres:password@localhost:5432/dbsight"
 export ENCRYPTION_KEY=$(openssl rand -hex 32)
 export PORT=42198
 
@@ -71,7 +71,7 @@ Image size: ~60-80MB (includes Go binary ~15MB, React dist ~500KB, Alpine base ~
 ```bash
 docker-compose up -d
 # App available at http://localhost:42198
-# PostgreSQL at localhost:5432
+# PostgreSQL at localhost:5499
 ```
 
 Edit `docker-compose.yml` to change ports, encryption key, or mount volumes for development.
@@ -81,7 +81,7 @@ Edit `docker-compose.yml` to change ports, encryption key, or mount volumes for 
 ```bash
 docker run -d \
   --name dbsight \
-  -e DATABASE_URL="postgres://user:pass@postgres-host:5432/dbanalyzer" \
+  -e DATABASE_URL="postgres://user:pass@postgres-host:5432/dbsight" \
   -e ENCRYPTION_KEY="$(openssl rand -hex 32)" \
   -e PORT=42198 \
   -p 42198:42198 \
@@ -92,7 +92,7 @@ docker run -d \
 
 | Variable               | Required | Default | Example                                                          |
 | ---------------------- | -------- | ------- | ---------------------------------------------------------------- |
-| `DATABASE_URL`         | Yes      | —       | `postgres://user:pass@localhost:5432/dbanalyzer?sslmode=disable` |
+| `DATABASE_URL`         | Yes      | —       | `postgres://user:pass@localhost:5432/dbsight?sslmode=disable` |
 | `ENCRYPTION_KEY`       | Yes      | —       | `abc123...` (64 hex chars = 32 bytes)                            |
 | `PORT`                 | No       | `42198`  | `42198`                                                           |
 | `WORKER_INTERVAL_SECS` | No       | `30`    | `30`                                                             |

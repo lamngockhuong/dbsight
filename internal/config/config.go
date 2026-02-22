@@ -3,7 +3,14 @@ package config
 import (
 	"os"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
+
+func init() {
+	// Load .env if present; ignore error (env vars may be set externally)
+	godotenv.Load()
+}
 
 type Config struct {
 	Port           string

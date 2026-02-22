@@ -73,7 +73,7 @@ npm run dev
 
 ```bash
 PORT=42198
-DATABASE_URL=postgres://dbanalyzer:secret@localhost:5432/dbanalyzer?sslmode=disable
+DATABASE_URL=postgres://dbsight:secret@localhost:5499/dbsight?sslmode=disable
 ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 WORKER_INTERVAL_SECS=30
 ```

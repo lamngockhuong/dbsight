@@ -1,21 +1,23 @@
 services:
   postgres:
     image: postgres:18-alpine
+    command: postgres -c shared_preload_libraries=pg_stat_statements
     environment:
-      POSTGRES_DB: dbanalyzer
-      POSTGRES_USER: dbanalyzer
+      POSTGRES_DB: dbsight
+      POSTGRES_USER: dbsight
       POSTGRES_PASSWORD: secret
     ports:
-      - "5432:5432"
+      - "5499:5432"
     volumes:
       - pgdata:/var/lib/postgresql
+      - ./scripts/init-pg-stat-statements.sql:/docker-entrypoint-initdb.d/init-pg-stat-statements.sql:ro
 
   app:
     build: .
     depends_on:
       - postgres
     environment:
-      DATABASE_URL: postgres://dbanalyzer:secret@postgres:5432/dbanalyzer?sslmode=disable
+      DATABASE_URL: postgres://dbsight:secret@postgres:5432/dbsight?sslmode=disable
       ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     ports:
       - "42198:42198"

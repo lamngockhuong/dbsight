@@ -39,7 +39,7 @@ docker-compose up -d postgres
 export ENCRYPTION_KEY=$(openssl rand -hex 32)
 
 # Configure database
-export DATABASE_URL="postgres://dbanalyzer:secret@localhost:5432/dbanalyzer?sslmode=disable"
+export DATABASE_URL="postgres://dbsight:secret@localhost:5499/dbsight?sslmode=disable"
 
 # Run migrations
 go run . migrate
