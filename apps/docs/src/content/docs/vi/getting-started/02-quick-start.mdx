@@ -1,6 +1,6 @@
 ---
 title: "Khởi động nhanh"
-description: "Cài đặt DBSight và phân tích cơ sở dữ liệu PostgreSQL đầu tiên của bạn trong vài phút"
+description: "Cài đặt DBSight và phân tích cơ sở dữ liệu đầu tiên của bạn trong vài phút"
 ---
 
 Hướng dẫn này đưa bạn từ bước cài đặt mới đến việc xem các truy vấn chậm cho kết nối cơ sở dữ liệu đầu tiên.
@@ -62,12 +62,24 @@ Worker started, interval=30s
 
 1. Nhấp **Add Connection** ở thanh bên trái.
 2. Nhập **Tên** mô tả (ví dụ: `production-replica`).
-3. Dán **DSN** PostgreSQL của bạn:
+3. Chọn loại cơ sở dữ liệu từ dropdown **Database Type**:
+   - **PostgreSQL** — định dạng chuỗi kết nối tiêu chuẩn
+   - **MySQL** — phiên bản 5.7+ hoặc 8.0+ với performance_schema được bật
+   - **MariaDB** — phiên bản 10.x+ với performance_schema được bật
+4. Dán **DSN** phù hợp cho cơ sở dữ liệu của bạn:
+
+   **PostgreSQL:**
    ```
    postgresql://user:password@localhost:5432/mydb?sslmode=disable
    ```
-4. Nhấp **Test Connection** để xác minh DBSight có thể kết nối đến cơ sở dữ liệu.
-5. Nhấp **Save**.
+
+   **MySQL/MariaDB:**
+   ```
+   user:password@tcp(localhost:3306)/mydb?parseTime=true&timeout=10s
+   ```
+
+5. Nhấp **Test Connection** để xác minh DBSight có thể kết nối đến cơ sở dữ liệu.
+6. Nhấp **Save**.
 
 Kết nối xuất hiện trong thanh bên. Worker nền của DBSight sẽ lập lịch ngay một lần thu thập metrics.
 

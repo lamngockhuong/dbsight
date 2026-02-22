@@ -1,29 +1,33 @@
 ---
 title: "Quản lý Kết nối"
-description: "Thêm, chỉnh sửa, kiểm tra và xóa các kết nối cơ sở dữ liệu PostgreSQL"
+description: "Thêm, chỉnh sửa, kiểm tra và xóa các kết nối cơ sở dữ liệu PostgreSQL, MySQL và MariaDB"
 ---
 
-Một kết nối cho DBSight biết cơ sở dữ liệu PostgreSQL nào cần theo dõi. Bạn có thể thêm bao nhiêu kết nối tùy ý — mỗi kết nối chạy độc lập thông qua Worker nền.
+Một kết nối cho DBSight biết cơ sở dữ liệu nào cần theo dõi. Bạn có thể thêm bao nhiêu kết nối tùy ý — mỗi kết nối chạy độc lập thông qua Worker nền. DBSight hỗ trợ PostgreSQL, MySQL và MariaDB.
 
 ## Thêm Kết nối
 
 1. Nhấp **Add Connection** trong thanh bên trái.
 2. Nhập **Tên** — đây chỉ là nhãn hiển thị (ví dụ: `prod-replica`, `staging-db`).
-3. Nhập **DSN** (Data Source Name) cho cơ sở dữ liệu đích.
-4. Nhấp **Test Connection** để xác minh kết nối trước khi lưu.
-5. Nhấp **Save**.
+3. Chọn **Loại Cơ sở dữ liệu** từ dropdown (PostgreSQL, MySQL hoặc MariaDB).
+4. Nhập **DSN** (Data Source Name) cho cơ sở dữ liệu đích.
+   - Bạn có thể chuyển đổi giữa chế độ **DSN** (dán chuỗi kết nối) và chế độ **Form** (điền từng trường).
+5. Nhấp **Test Connection** để xác minh kết nối trước khi lưu.
+6. Nhấp **Save**.
 
 Kết nối xuất hiện trong thanh bên ngay lập tức. Worker sẽ lập lịch lần thu thập metrics đầu tiên trong vòng một chu kỳ polling.
 
 ## Định dạng DSN
 
-DBSight sử dụng định dạng chuỗi kết nối PostgreSQL tiêu chuẩn:
+### PostgreSQL
+
+Định dạng chuỗi kết nối PostgreSQL tiêu chuẩn:
 
 ```
 postgresql://user:password@host:port/dbname?sslmode=disable
 ```
 
-### Ví dụ
+**Ví dụ:**
 
 ```bash
 # Cơ sở dữ liệu cục bộ, không có SSL
@@ -37,6 +41,52 @@ postgresql://appuser:secret@db.example.com:5432/production?sslmode=require&searc
 ```
 
 Sử dụng người dùng cơ sở dữ liệu chỉ đọc khi có thể. DBSight chỉ cần quyền `SELECT` trên `pg_stat_statements`, `pg_stat_user_indexes`, `pg_stat_user_tables` và `pg_database`.
+
+### MySQL 5.7+ / 8.0+
+
+MySQL sử dụng định dạng DSN khác với driver `go-sql-driver/mysql`:
+
+```
+user:password@tcp(host:port)/dbname?parseTime=true&timeout=10s
+```
+
+**Ví dụ:**
+
+```bash
+# Cơ sở dữ liệu cục bộ
+root:password@tcp(localhost:3306)/mydb?parseTime=true&timeout=10s
+
+# Cơ sở dữ liệu từ xa với các tham số cụ thể
+appuser:secret@tcp(db.example.com:3306)/production?parseTime=true&timeout=10s&charset=utf8mb4
+```
+
+**Yêu cầu:**
+
+- `performance_schema` phải được bật trên MySQL server
+- Sử dụng người dùng chỉ đọc với quyền `SELECT` trên `performance_schema.*`, `information_schema.*` và `SHOW GLOBAL STATUS`
+
+### MariaDB 10.x+
+
+MariaDB sử dụng cùng định dạng DSN như MySQL:
+
+```
+user:password@tcp(host:port)/dbname?parseTime=true&timeout=10s
+```
+
+**Ví dụ:**
+
+```bash
+# Cơ sở dữ liệu cục bộ
+root:password@tcp(localhost:3306)/mydb?parseTime=true&timeout=10s
+
+# Cơ sở dữ liệu từ xa
+appuser:secret@tcp(db.example.com:3306)/production?parseTime=true&timeout=10s
+```
+
+**Yêu cầu:**
+
+- `performance_schema` phải được bật trên MariaDB server
+- Sử dụng người dùng chỉ đọc với quyền `SELECT` trên `performance_schema.*`, `information_schema.*` và `SHOW GLOBAL STATUS`
 
 ## Kiểm tra Kết nối
 

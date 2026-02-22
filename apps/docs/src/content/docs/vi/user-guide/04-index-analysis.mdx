@@ -1,68 +1,122 @@
 ---
 title: "Phân tích Chỉ mục"
-description: "Phân tích mức độ sử dụng chỉ mục, tìm chỉ mục không dùng và phát hiện trùng lặp"
+description: "Phân tích mức độ sử dụng chỉ mục trên cơ sở dữ liệu PostgreSQL, MySQL và MariaDB"
 ---
 
-Tab Phân tích Chỉ mục lấy dữ liệu từ `pg_stat_user_indexes` và `pg_stat_user_tables` để cung cấp cho bạn bức tranh tổng thể về mức độ hiệu quả của các chỉ mục — và những chỉ mục nào đang tốn chi phí ghi mà không hỗ trợ gì cho việc đọc.
+Tab Phân tích Chỉ mục lấy dữ liệu sử dụng chỉ mục từ cơ sở dữ liệu của bạn để cung cấp bức tranh tổng thể về mức độ hiệu quả của các chỉ mục — và những chỉ mục nào đang tốn chi phí ghi mà không hỗ trợ gì cho việc đọc.
 
 ## Thống kê Sử dụng Chỉ mục
 
-Mỗi hàng trong bảng chỉ mục đại diện cho một chỉ mục trên một bảng:
+Mỗi hàng trong bảng chỉ mục đại diện cho một chỉ mục trên một bảng. Các thống kê cụ thể tùy theo loại cơ sở dữ liệu của bạn:
 
-| Cột | Mô tả |
-|---|---|
-| **Table** | Bảng mà chỉ mục thuộc về |
-| **Index Name** | Tên của chỉ mục |
-| **Scans** | Số lần quét chỉ mục được khởi tạo |
-| **Tuples Read** | Các hàng được đọc qua chỉ mục này |
-| **Tuples Fetched** | Các hàng thực sự được trả về cho truy vấn (sau kiểm tra visibility) |
-| **Index Size** | Dung lượng đĩa mà chỉ mục chiếm dụng |
+### PostgreSQL
+
+| Cột                | Mô tả                                                         |
+| ------------------ | ------------------------------------------------------------- |
+| **Table**          | Bảng mà chỉ mục thuộc về                                      |
+| **Index Name**     | Tên của chỉ mục                                               |
+| **Scans**          | Số lần quét chỉ mục được khởi tạo (từ `pg_stat_user_indexes`) |
+| **Tuples Read**    | Các hàng được đọc qua chỉ mục này                             |
+| **Tuples Fetched** | Các hàng thực sự được trả về sau kiểm tra visibility          |
+| **Index Size**     | Dung lượng đĩa mà chỉ mục chiếm dụng                          |
 
 Thống kê tích lũy kể từ lần gọi `pg_stat_reset()` cuối cùng. Hãy diễn giải chúng tương đối với tuổi bảng và mô hình traffic — một chỉ mục mới trên bảng ít hoạt động sẽ hiển thị số lần quét thấp ngay cả khi nó được thiết kế tốt.
 
+### MySQL 5.7+ / 8.0+
+
+| Cột               | Mô tả                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| **Table**         | Bảng mà chỉ mục thuộc về                                                             |
+| **Index Name**    | Tên của chỉ mục                                                                      |
+| **Scans**         | Số lần đếm từ `performance_schema.table_io_waits_summary_by_index_usage` (đọc + ghi) |
+| **Rows Selected** | Số hàng được kiểm tra bởi chỉ mục                                                    |
+| **Index Size**    | Kích thước từ `information_schema.statistics`                                        |
+
+Xóa thống kê performance schema bằng:
+
+```sql
+TRUNCATE TABLE performance_schema.table_io_waits_summary_by_index_usage;
+```
+
+### MariaDB 10.x+
+
+Tương tự MySQL với performance_schema. Việc phát hiện chỉ mục của MariaDB sử dụng `JSON_ARRAYAGG` để nhóm các cột qua các bảng thống kê.
+
 ## Xác định Chỉ mục Không Dùng
 
-Một chỉ mục với **0 lần quét** chưa được query planner sử dụng kể từ khi thống kê được reset lần cuối. Đây là các ứng viên để xóa.
+Một chỉ mục với **0 lần quét** (hoặc hoạt động rất thấp) chưa được query planner sử dụng. Đây là các ứng viên để xóa.
 
 Trước khi xóa một chỉ mục không dùng:
 
 1. Xác nhận thống kê đã tích lũy đủ lâu để có tính đại diện (ít nhất vài ngày traffic bình thường).
-2. Kiểm tra xem chỉ mục có tồn tại vì một ràng buộc write-path (unique, primary key, foreign key) không — những cái đó sẽ hiển thị ít lần quét nhưng không được xóa.
+2. Kiểm tra xem chỉ mục có tồn tại vì một ràng buộc (unique, primary key, foreign key) không — những cái đó sẽ hiển thị ít lần quét nhưng không được xóa.
 3. Cân nhắc khối lượng công việc truy vấn — các truy vấn theo mùa hoặc theo lô có thể dùng chỉ mục hiếm nhưng quan trọng.
 
-Để xóa một chỉ mục không dùng đã xác nhận:
+**PostgreSQL:**
 
 ```sql
 DROP INDEX CONCURRENTLY index_name;
 ```
 
-Dùng `CONCURRENTLY` tránh khóa bảng trong quá trình xóa.
+**MySQL/MariaDB:**
+
+```sql
+DROP INDEX index_name ON table_name;
+```
 
 ## Phát hiện Chỉ mục Trùng lặp
 
-Các chỉ mục trùng lặp chia sẻ cùng tập cột và thứ tự trên cùng một bảng. Chúng lãng phí dung lượng đĩa và làm chậm mọi lệnh `INSERT`, `UPDATE` và `DELETE` vì PostgreSQL phải duy trì tất cả các bản sao.
+Các chỉ mục trùng lặp chia sẻ cùng tập cột và thứ tự trên cùng một bảng. Chúng lãng phí dung lượng đĩa và làm chậm mọi thao tác ghi.
 
-DBSight đánh dấu các cặp chỉ mục có định nghĩa chỉ mục trùng khớp. Hãy xem lại từng cặp được đánh dấu và xóa cái thừa.
+DBSight đánh dấu các cặp chỉ mục có định nghĩa trùng khớp. Hãy xem lại từng cặp được đánh dấu và xóa cái thừa.
+
+**PostgreSQL:**
 
 ```sql
--- Kiểm tra định nghĩa chỉ mục trước khi xóa
 SELECT indexname, indexdef FROM pg_indexes
 WHERE tablename = 'my_table';
 ```
 
+**MySQL/MariaDB:**
+
+```sql
+SELECT DISTINCT
+    a.INDEX_NAME,
+    a.COLUMN_NAME,
+    GROUP_CONCAT(b.COLUMN_NAME ORDER BY b.SEQ_IN_INDEX) AS columns
+FROM information_schema.STATISTICS a
+JOIN information_schema.STATISTICS b ON a.TABLE_SCHEMA = b.TABLE_SCHEMA
+    AND a.TABLE_NAME = b.TABLE_NAME
+GROUP BY a.INDEX_NAME
+ORDER BY a.TABLE_NAME, a.INDEX_NAME;
+```
+
 ## Thống kê Cấp Bảng
 
-Bên dưới bảng chỉ mục, DBSight hiển thị thống kê theo từng bảng được lấy từ `pg_stat_user_tables`:
+Bên dưới bảng chỉ mục, DBSight hiển thị thống kê theo từng bảng:
 
-| Cột | Mô tả |
-|---|---|
-| **Sequential Scans** | Quét toàn bộ bảng — số lượng cao gợi ý thiếu chỉ mục |
-| **Seq Scan Rows** | Số hàng trung bình trả về mỗi lần quét tuần tự |
-| **Live Tuples** | Số hàng hiện tại ước tính |
-| **Dead Tuples** | Các hàng đã xóa hoặc cập nhật nhưng chưa được vacuum |
-| **Table Size** | Tổng dung lượng đĩa cho bảng (heap + toast) |
-| **Last Vacuum** | Lần cuối autovacuum xử lý bảng |
-| **Last Analyze** | Lần cuối thống kê được làm mới |
+### PostgreSQL
+
+| Cột                  | Mô tả                                                |
+| -------------------- | ---------------------------------------------------- |
+| **Sequential Scans** | Quét toàn bộ bảng (từ `pg_stat_user_tables`)         |
+| **Seq Scan Rows**    | Số hàng trung bình trả về mỗi lần quét               |
+| **Live Tuples**      | Số hàng hiện tại ước tính                            |
+| **Dead Tuples**      | Các hàng đã xóa hoặc cập nhật nhưng chưa được vacuum |
+| **Table Size**       | Tổng dung lượng đĩa cho bảng (heap + toast)          |
+| **Last Vacuum**      | Lần cuối autovacuum xử lý bảng                       |
+| **Last Analyze**     | Lần cuối thống kê được làm mới                       |
+
+### MySQL/MariaDB
+
+| Cột            | Mô tả                                        |
+| -------------- | -------------------------------------------- |
+| **Table**      | Tên bảng                                     |
+| **Rows**       | Số hàng ước tính                             |
+| **Data Size**  | Kích thước dữ liệu bảng                      |
+| **Index Size** | Tổng kích thước của tất cả chỉ mục trên bảng |
+
+Lưu ý: MySQL/MariaDB không cung cấp cùng mức độ chi tiết per-operation như `pg_stat_user_tables` của PostgreSQL.
 
 ## Diễn giải Kết quả
 

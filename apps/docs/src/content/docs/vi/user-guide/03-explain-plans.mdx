@@ -1,9 +1,9 @@
 ---
 title: "Kế hoạch EXPLAIN"
-description: "Chạy và phân tích kế hoạch EXPLAIN PostgreSQL để tối ưu hóa truy vấn"
+description: "Chạy và phân tích kế hoạch EXPLAIN cho PostgreSQL, MySQL và MariaDB"
 ---
 
-Kế hoạch EXPLAIN cho thấy chính xác cách PostgreSQL dự định (hoặc thực sự đã) thực thi một truy vấn. DBSight cho phép bạn chạy EXPLAIN trực tiếp từ danh sách truy vấn chậm mà không cần rời khỏi bảng điều khiển.
+Kế hoạch EXPLAIN cho thấy chính xác cách cơ sở dữ liệu dự định (hoặc thực sự đã) thực thi một truy vấn. DBSight cho phép bạn chạy EXPLAIN trực tiếp từ danh sách truy vấn chậm mà không cần rời khỏi bảng điều khiển.
 
 ## Cách Chạy EXPLAIN
 
@@ -16,16 +16,42 @@ Kế hoạch EXPLAIN cho thấy chính xác cách PostgreSQL dự định (hoặ
 
 ## EXPLAIN so với EXPLAIN ANALYZE
 
-| Chế độ | Thực thi Truy vấn | Hiển thị Thời gian Thực tế | An toàn trên Production |
-|---|---|---|---|
-| EXPLAIN | Không | Không | Có |
-| EXPLAIN ANALYZE | Có | Có | Dùng thận trọng |
+| Chế độ          | Thực thi Truy vấn | Hiển thị Thời gian Thực tế | An toàn trên Production |
+| --------------- | ----------------- | -------------------------- | ----------------------- |
+| EXPLAIN         | Không             | Không                      | Có                      |
+| EXPLAIN ANALYZE | Có                | Có                         | Dùng thận trọng         |
 
 Dùng **EXPLAIN** để xem nhanh chiến lược của query planner mà không chạm vào dữ liệu. Dùng **EXPLAIN ANALYZE** khi bạn cần số hàng thực tế và thời gian để chẩn đoán lỗi ước tính của kế hoạch — nhưng lưu ý nó thực sự chạy truy vấn.
 
-## Bảo mật
+## Hành vi EXPLAIN theo Loại Cơ sở dữ liệu
 
-DBSight bọc mọi lần thực thi EXPLAIN trong giao dịch `SET TRANSACTION READ ONLY` và được rollback ngay sau khi kế hoạch được lấy. Điều này ngăn việc sửa đổi dữ liệu ngoài ý muốn ngay cả khi một truy vấn nào đó vượt qua quá trình chuẩn hóa. Các thao tác ghi (`INSERT`, `UPDATE`, `DELETE`) sẽ báo lỗi trong giao dịch chỉ đọc, bảo vệ dữ liệu của bạn.
+### PostgreSQL
+
+DBSight chạy `EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS)` và bọc thực thi trong giao dịch chỉ đọc để đảm bảo an toàn. Đầu ra hiển thị cấu trúc JSON thống nhất với dữ liệu ước tính chi phí và thực thi thực tế.
+
+**Bảo mật:** Các thao tác ghi (`INSERT`, `UPDATE`, `DELETE`) sẽ báo lỗi trong giao dịch chỉ đọc, bảo vệ dữ liệu của bạn.
+
+### MySQL 5.7+ / 8.0+
+
+MySQL hỗ trợ hai định dạng đầu ra EXPLAIN:
+
+- **EXPLAIN** — chỉ ước tính dưới dạng JSON với root `query_block`
+- **EXPLAIN ANALYZE** — mới trong MySQL 8.0.18, trả về định dạng TREE (bọc thành JSON)
+
+DBSight xử lý cả hai định dạng và phát hiện phiên bản bạn đang chạy để chọn định dạng đầu ra phù hợp.
+
+**Lưu ý:** MySQL 8.0.18+ hỗ trợ `EXPLAIN ANALYZE` thực sự cho kế hoạch thực thi thực tế.
+
+### MariaDB 10.x+
+
+MariaDB có các biến thể EXPLAIN riêng:
+
+- **EXPLAIN FORMAT=JSON** — ước tính dưới dạng cấu trúc JSON `query_block` phẳng
+- **ANALYZE FORMAT=JSON** — thực thi truy vấn và trả về kế hoạch JSON thực tế
+
+DBSight tự động phát hiện phiên bản MariaDB của bạn và chọn cú pháp đúng.
+
+**Lưu ý:** `ANALYZE FORMAT=JSON` của MariaDB khác với định dạng tree của MySQL nhưng vẫn cung cấp các metrics thực thi thực tế.
 
 ## Đọc Đầu ra JSON
 
@@ -45,25 +71,25 @@ PostgreSQL trả về kế hoạch dưới dạng cây JSON. Các trường quan
 }
 ```
 
-| Trường | Ý nghĩa |
-|---|---|
-| `Node Type` | Thao tác PostgreSQL đang thực hiện |
-| `Total Cost` | Chi phí ước tính của query planner (đơn vị tùy ý, so sánh tương đối mới có ý nghĩa) |
-| `Plan Rows` so với `Actual Rows` | Chênh lệch lớn cho thấy thống kê cũ — chạy `ANALYZE` |
-| `Actual Total Time` | Millisecond thực tế cho node này (chỉ với EXPLAIN ANALYZE) |
-| `Buffers` | Các trang đọc từ cache so với đĩa (thêm tùy chọn `BUFFERS` để xem) |
+| Trường                           | Ý nghĩa                                                                             |
+| -------------------------------- | ----------------------------------------------------------------------------------- |
+| `Node Type`                      | Thao tác cơ sở dữ liệu đang thực hiện                                               |
+| `Total Cost`                     | Chi phí ước tính của query planner (đơn vị tùy ý, so sánh tương đối mới có ý nghĩa) |
+| `Plan Rows` so với `Actual Rows` | Chênh lệch lớn cho thấy thống kê cũ — chạy `ANALYZE`                                |
+| `Actual Total Time`              | Millisecond thực tế cho node này (chỉ với EXPLAIN ANALYZE)                          |
+| `Buffers`                        | Các trang đọc từ cache so với đĩa (thêm tùy chọn `BUFFERS` để xem)                  |
 
 ## Các Loại Node Thường Gặp
 
-| Loại Node | Ý nghĩa |
-|---|---|
-| **Seq Scan** | Quét toàn bộ bảng — chấp nhận được với bảng nhỏ, tốn kém với bảng lớn |
-| **Index Scan** | Dùng chỉ mục để định vị hàng — thường nhanh |
-| **Index Only Scan** | Tất cả dữ liệu cần thiết đến từ chỉ mục — rất nhanh |
-| **Hash Join** | Xây dựng bảng hash từ một bên, dò với bên kia |
-| **Nested Loop** | Lặp qua các hàng bên ngoài, tra cứu hàng khớp bên trong — tốt cho tập nhỏ |
-| **Sort** | Bước sắp xếp tường minh — có thể tràn ra đĩa nếu `work_mem` quá thấp |
-| **Bitmap Heap Scan** | Theo bitmap của các trang khớp — phổ biến với điều kiện OR |
+| Loại Node            | Ý nghĩa                                                                   |
+| -------------------- | ------------------------------------------------------------------------- |
+| **Seq Scan**         | Quét toàn bộ bảng — chấp nhận được với bảng nhỏ, tốn kém với bảng lớn     |
+| **Index Scan**       | Dùng chỉ mục để định vị hàng — thường nhanh                               |
+| **Index Only Scan**  | Tất cả dữ liệu cần thiết đến từ chỉ mục — rất nhanh                       |
+| **Hash Join**        | Xây dựng bảng hash từ một bên, dò với bên kia                             |
+| **Nested Loop**      | Lặp qua các hàng bên ngoài, tra cứu hàng khớp bên trong — tốt cho tập nhỏ |
+| **Sort**             | Bước sắp xếp tường minh — có thể tràn ra đĩa nếu `work_mem` quá thấp      |
+| **Bitmap Heap Scan** | Theo bitmap của các trang khớp — phổ biến với điều kiện OR                |
 
 ## Gợi ý Tối ưu hóa
 

@@ -1,9 +1,9 @@
 ---
 title: "Mở rộng Adapter"
-description: "Cách thêm hỗ trợ cho các loại cơ sở dữ liệu mới như MySQL hoặc SQLite"
+description: "Cách thêm hỗ trợ cho các loại cơ sở dữ liệu mới như SQLite"
 ---
 
-DBSight sử dụng mẫu adapter để cô lập tất cả logic dành riêng cho cơ sở dữ liệu sau một interface duy nhất. Thêm hỗ trợ cho một loại cơ sở dữ liệu mới (MySQL, SQLite, CockroachDB, v.v.) có nghĩa là tạo một file mới và đăng ký nó trong factory — không cần thay đổi các package API, Worker hay Store.
+DBSight sử dụng mẫu adapter để cô lập tất cả logic dành riêng cho cơ sở dữ liệu sau một interface duy nhất. Thêm hỗ trợ cho một loại cơ sở dữ liệu mới (SQLite, CockroachDB, v.v.) có nghĩa là tạo một file mới và đăng ký nó trong factory — không cần thay đổi các package API, Worker hay Store.
 
 ## Interface DBAnalyzer
 
@@ -24,16 +24,16 @@ type DBAnalyzer interface {
 
 ### Mô tả Phương thức
 
-| Phương thức | Mô tả |
-|---|---|
-| `Connect` | Mở một connection pool sử dụng DSN đã giải mã |
-| `Close` | Giải phóng tất cả kết nối một cách an toàn |
-| `GetSlowQueries` | Trả về các truy vấn chậm hàng đầu, tương tự như `pg_stat_statements` |
-| `GetExplainPlan` | Chạy `EXPLAIN` trên một truy vấn; sử dụng giao dịch chỉ đọc |
-| `GetIndexStats` | Thống kê sử dụng per-index (lần quét, hàng đọc, kích thước) |
-| `GetTableStats` | Số lần quét tuần tự và số hàng per-table |
-| `GetDuplicateIndexes` | Tìm các chỉ mục có định nghĩa giống nhau |
-| `GetDatabaseStats` | Tên DB, kích thước, số kết nối, tỷ lệ cache hit |
+| Phương thức           | Mô tả                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| `Connect`             | Mở một connection pool sử dụng DSN đã giải mã                        |
+| `Close`               | Giải phóng tất cả kết nối một cách an toàn                           |
+| `GetSlowQueries`      | Trả về các truy vấn chậm hàng đầu, tương tự như `pg_stat_statements` |
+| `GetExplainPlan`      | Chạy `EXPLAIN` trên một truy vấn; sử dụng giao dịch chỉ đọc          |
+| `GetIndexStats`       | Thống kê sử dụng per-index (lần quét, hàng đọc, kích thước)          |
+| `GetTableStats`       | Số lần quét tuần tự và số hàng per-table                             |
+| `GetDuplicateIndexes` | Tìm các chỉ mục có định nghĩa giống nhau                             |
+| `GetDatabaseStats`    | Tên DB, kích thước, số kết nối, tỷ lệ cache hit                      |
 
 `QueryOpts` chứa các cài đặt thu thập:
 
@@ -45,17 +45,45 @@ type QueryOpts struct {
 }
 ```
 
-## Từng Bước: Thêm MySQL Adapter
+## Ví dụ Thực tế: Adapter MySQL và MariaDB
+
+DBSight bao gồm các implementation production cho MySQL và MariaDB. Cấu trúc như sau:
+
+### Cấu trúc Adapter MySQL
+
+- `internal/adapter/mysql.go` — Kết nối và các phương thức cốt lõi
+- `internal/adapter/mysql_slow_queries.go` — Truy vấn `performance_schema.events_statements_summary_by_digest`
+- `internal/adapter/mysql_explain.go` — Xử lý `EXPLAIN FORMAT=JSON` và `EXPLAIN ANALYZE TREE FORMAT=JSON`
+- `internal/adapter/mysql_indexes.go` — Truy vấn `information_schema.statistics` với metrics từ `performance_schema`
+- `internal/adapter/mysql_stats.go` — Thống kê cấp database từ `SHOW GLOBAL STATUS`
+- `internal/adapter/mysql_explain_test.go` — Kiểm tra cho việc phân tích đầu ra EXPLAIN
+
+### Cấu trúc Adapter MariaDB
+
+- `internal/adapter/mariadb.go` — Kết nối và các phương thức cốt lõi
+- `internal/adapter/mariadb_slow_queries.go` — Truy vấn `performance_schema` (giống MySQL, nhưng xử lý các trường thiếu)
+- `internal/adapter/mariadb_explain.go` — Xử lý `EXPLAIN FORMAT=JSON` và `ANALYZE FORMAT=JSON`
+- `internal/adapter/mariadb_indexes.go` — Truy vấn chỉ mục dựa trên JSON với `JSON_ARRAYAGG`
+- `internal/adapter/mariadb_stats.go` — Thống kê cấp database
+- `internal/adapter/mariadb_explain_test.go` — Kiểm tra cho các định dạng EXPLAIN đặc thù của MariaDB
+
+### Tiện ích Dùng Chung
+
+Cả hai adapter đều sử dụng các helper từ `internal/adapter/mysqlcompat/`:
+
+- `helpers.go` — DSN builder, phân tích JSON EXPLAIN, chuyển đổi performance_schema (picosecond sang ms)
+
+## Từng Bước: Thêm Adapter Mới (ví dụ: SQLite)
 
 ### 1. Thêm phụ thuộc driver
 
 ```bash
-go get github.com/go-sql-driver/mysql
+go get github.com/mattn/go-sqlite3
 ```
 
 ### 2. Tạo file adapter
 
-Tạo `internal/adapter/mysql.go`:
+Tạo `internal/adapter/sqlite.go`:
 
 ```go
 package adapter
@@ -65,69 +93,68 @@ import (
     "database/sql"
     "fmt"
 
-    _ "github.com/go-sql-driver/mysql"
+    _ "github.com/mattn/go-sqlite3"
     "github.com/lamngockhuong/dbsight/internal/models"
 )
 
-type MySQLAdapter struct {
+type SQLiteAdapter struct {
     db *sql.DB
 }
 
-func NewMySQLAdapter() *MySQLAdapter {
-    return &MySQLAdapter{}
+func NewSQLiteAdapter() *SQLiteAdapter {
+    return &SQLiteAdapter{}
 }
 
-func (a *MySQLAdapter) Connect(ctx context.Context, dsn string) error {
-    db, err := sql.Open("mysql", dsn)
+func (a *SQLiteAdapter) Connect(ctx context.Context, dsn string) error {
+    db, err := sql.Open("sqlite3", dsn)
     if err != nil {
-        return fmt.Errorf("mysql open: %w", err)
+        return fmt.Errorf("sqlite open: %w", err)
     }
     if err := db.PingContext(ctx); err != nil {
-        return fmt.Errorf("mysql ping: %w", err)
+        return fmt.Errorf("sqlite ping: %w", err)
     }
     a.db = db
     return nil
 }
 
-func (a *MySQLAdapter) Close() error {
+func (a *SQLiteAdapter) Close() error {
     if a.db != nil {
         return a.db.Close()
     }
     return nil
 }
 
-func (a *MySQLAdapter) GetSlowQueries(ctx context.Context, opts QueryOpts) ([]models.SlowQuery, error) {
-    // Truy vấn performance_schema.events_statements_summary_by_digest
-    // Ánh xạ các cột sang các trường models.SlowQuery
+func (a *SQLiteAdapter) GetSlowQueries(ctx context.Context, opts QueryOpts) ([]models.SlowQuery, error) {
+    // Truy vấn sqlite_stat1 hoặc bảng logging tùy chỉnh
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetExplainPlan(ctx context.Context, query string, opts QueryOpts) (*models.ExplainPlan, error) {
-    // Sử dụng EXPLAIN FORMAT=JSON ...
+func (a *SQLiteAdapter) GetExplainPlan(ctx context.Context, query string, opts QueryOpts) (*models.ExplainPlan, error) {
+    // Sử dụng EXPLAIN QUERY PLAN
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetIndexStats(ctx context.Context) ([]models.IndexStat, error) {
-    // Truy vấn information_schema.statistics + sys.schema_index_statistics
+func (a *SQLiteAdapter) GetIndexStats(ctx context.Context) ([]models.IndexStat, error) {
+    // Truy vấn sqlite_master
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetTableStats(ctx context.Context) ([]models.TableStat, error) {
+func (a *SQLiteAdapter) GetTableStats(ctx context.Context) ([]models.TableStat, error) {
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error) {
+func (a *SQLiteAdapter) GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error) {
     return nil, fmt.Errorf("not yet implemented")
 }
 
-func (a *MySQLAdapter) GetDatabaseStats(ctx context.Context) (*models.DatabaseStats, error) {
+func (a *SQLiteAdapter) GetDatabaseStats(ctx context.Context) (*models.DatabaseStats, error) {
     return nil, fmt.Errorf("not yet implemented")
 }
 ```
 
 ### 3. Đăng ký trong factory
 
-Chỉnh sửa `internal/adapter/adapter.go`, thêm case `"mysql"`:
+Chỉnh sửa `internal/adapter/adapter.go`, thêm case `"sqlite"`:
 
 ```go
 func NewAdapter(dbType string) (DBAnalyzer, error) {
@@ -136,6 +163,10 @@ func NewAdapter(dbType string) (DBAnalyzer, error) {
         return NewPostgresAdapter(), nil
     case "mysql":
         return NewMySQLAdapter(), nil
+    case "mariadb":
+        return NewMariaDBAdapter(), nil
+    case "sqlite":
+        return NewSQLiteAdapter(), nil
     default:
         return nil, fmt.Errorf("unsupported db type: %s", dbType)
     }
@@ -144,7 +175,16 @@ func NewAdapter(dbType string) (DBAnalyzer, error) {
 
 ### 4. Cập nhật form kết nối frontend
 
-Trong `apps/web/src/components/connections/`, thêm `"mysql"` vào các tùy chọn select `db_type` để người dùng có thể chọn khi tạo kết nối.
+Trong `apps/web/src/components/connections/connection-form.tsx`, thêm `"sqlite"` vào các tùy chọn loại database:
+
+```typescript
+const dbTypeOptions = [
+  { value: "postgres", label: "PostgreSQL" },
+  { value: "mysql", label: "MySQL" },
+  { value: "mariadb", label: "MariaDB" },
+  { value: "sqlite", label: "SQLite" },
+]
+```
 
 ## Kiểm tra Adapter của bạn
 
@@ -166,8 +206,17 @@ func TestMySQLAdapter_Connect(t *testing.T) {
 Chạy với:
 
 ```bash
-TEST_MYSQL_DSN="user:password@tcp(localhost:3306)/testdb" go test ./internal/adapter/ -v -run TestMySQL
+TEST_SQLITE_DSN="file::memory:?cache=shared" go test ./internal/adapter/ -v -run TestSQLite
 ```
+
+## Học từ Các Implementation MySQL/MariaDB
+
+Để tham khảo chi tiết, hãy nghiên cứu các implementation adapter MySQL và MariaDB:
+
+1. **Chuyển đổi performance schema**: Xem cách timer picosecond của MySQL được chuyển đổi sang millisecond trong `internal/adapter/mysql_slow_queries.go`
+2. **Phân tích EXPLAIN**: Cả MySQL và MariaDB đều có logic phân tích JSON tùy chỉnh trong các file `*_explain.go`
+3. **Phát hiện chỉ mục trùng lặp**: `mariadb_indexes.go` của MariaDB sử dụng `JSON_ARRAYAGG` để nhóm — một pattern hữu ích cho các database không có `array_agg`
+4. **Kiểm tra**: Cả `mysql_explain_test.go` và `mariadb_explain_test.go` đều minh họa cách kiểm tra phân tích JSON với các ví dụ đầu ra thực tế
 
 ## Danh sách kiểm tra PR
 
@@ -176,6 +225,8 @@ Trước khi mở pull request cho adapter mới:
 - [ ] Tất cả 8 phương thức interface được triển khai (không có stub `fmt.Errorf("not yet implemented")` cố định)
 - [ ] Kiểm tra unit bao gồm `Connect`, `Close` và ít nhất `GetSlowQueries`
 - [ ] Kiểm tra tích hợp với một database instance thực (bỏ qua khi biến môi trường vắng mặt)
-- [ ] Case factory được thêm trong `NewAdapter`
-- [ ] Tùy chọn `db_type` frontend được thêm
-- [ ] Trang tài liệu được cập nhật hoặc thêm mới trong `apps/docs/`
+- [ ] Case factory được thêm trong `NewAdapter()` trong `internal/adapter/adapter.go`
+- [ ] Tùy chọn loại database frontend được thêm trong `connection-form.tsx`
+- [ ] Tài liệu được thêm hoặc cập nhật trong `apps/docs/` với hướng dẫn thiết lập đặc thù cho database
+- [ ] Các câu truy vấn SQL được xác minh hoạt động với phiên bản database đích
+- [ ] Định dạng DSN được ghi lại kèm ví dụ

@@ -1,17 +1,24 @@
 ---
 title: "Phân tích Truy vấn Chậm"
-description: "Xác định và phân tích các truy vấn PostgreSQL chậm với pg_stat_statements"
+description: "Xác định và phân tích các truy vấn chậm cho PostgreSQL, MySQL và MariaDB"
 ---
 
 Bảng truy vấn chậm là view cốt lõi trong DBSight. Nó hiển thị các truy vấn tiêu tốn nhiều thời gian nhất trên cơ sở dữ liệu của bạn, được xếp hạng theo tổng chi phí thực thi.
 
 ## Cách Hoạt động
 
-DBSight đọc từ extension `pg_stat_statements` trên cơ sở dữ liệu được theo dõi. Extension này tích lũy thống kê tích lũy — tổng số lần gọi, tổng thời gian, số hàng trả về — cho mọi query fingerprint đã được chuẩn hóa mà PostgreSQL đã thấy kể từ lần reset cuối cùng.
+DBSight đọc từ các bảng thống kê dành riêng cho từng loại cơ sở dữ liệu:
+
+- **PostgreSQL:** extension `pg_stat_statements`
+- **MySQL/MariaDB:** `performance_schema.events_statements_summary_by_digest`
+
+Các bảng này tích lũy thống kê tích lũy — tổng số lần gọi, tổng thời gian, số hàng trả về — cho mọi query fingerprint đã được chuẩn hóa mà cơ sở dữ liệu đã thấy kể từ lần reset cuối cùng.
 
 Worker nền thu thập một Snapshot theo mỗi chu kỳ polling. Giữa các Snapshot, DBSight tính toán **Delta** để bạn có thể thấy những truy vấn nào đã trở nên tệ hơn kể từ lần thu thập trước — không chỉ những truy vấn nào tệ nhất nhìn chung.
 
-## Điều kiện tiên quyết: pg_stat_statements
+## Thiết lập theo Loại Cơ sở dữ liệu
+
+### PostgreSQL: pg_stat_statements
 
 Cơ sở dữ liệu được theo dõi phải có `pg_stat_statements` được cài đặt và tải:
 
@@ -23,19 +30,53 @@ SELECT * FROM pg_stat_statements LIMIT 1;
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 ```
 
-Bạn cũng cần thêm nó vào `shared_preload_libraries` trong `postgresql.conf` và khởi động lại PostgreSQL nếu nó chưa được tải trước đó.
+Thêm vào `shared_preload_libraries` trong `postgresql.conf` và khởi động lại PostgreSQL nếu cần.
+
+### MySQL 5.7+ / 8.0+: performance_schema
+
+Đảm bảo `performance_schema` được bật (thường bật theo mặc định):
+
+```sql
+-- Kiểm tra xem nó có được bật không
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Nên trả về 'ON'
+
+-- Nếu bị tắt, thêm vào my.cnf và khởi động lại:
+[mysqld]
+performance_schema = ON
+
+-- Chuyển đổi timer: MySQL lưu thời gian theo picosecond
+-- DBSight chuyển đổi: picoseconds / 1e9 = milliseconds
+```
+
+### MariaDB 10.x+: performance_schema
+
+Bật `performance_schema` trong cấu hình:
+
+```sql
+-- Kiểm tra xem nó có được bật không
+SHOW GLOBAL VARIABLES LIKE 'performance_schema';
+-- Nên trả về 'ON'
+
+-- Nếu bị tắt, thêm vào my.cnf và khởi động lại:
+[mysqld]
+performance_schema = ON
+
+-- Lưu ý: MariaDB thiếu một số trường (QUANTILE_95, FIRST_SEEN, LAST_SEEN)
+-- nhưng các metrics cơ bản hoạt động giống MySQL
+```
 
 ## Các Cột trong Bảng Truy vấn
 
-| Cột | Mô tả |
-|---|---|
-| **Query** | Văn bản truy vấn đã chuẩn hóa (các giá trị literal được thay bằng `$1`, `$2`, …) |
-| **Calls** | Tổng số lần truy vấn này được thực thi |
-| **Total Time** | Tổng thời gian thực thi tích lũy tính bằng millisecond |
-| **Mean Time** | Thời gian thực thi trung bình mỗi lần gọi |
-| **Rows** | Tổng số hàng được trả về hoặc bị ảnh hưởng |
-| **Delta Calls** | Số lần gọi mới kể từ Snapshot trước |
-| **Delta Time** | Tổng thời gian tăng thêm kể từ Snapshot trước |
+| Cột             | Mô tả                                                                            |
+| --------------- | -------------------------------------------------------------------------------- |
+| **Query**       | Văn bản truy vấn đã chuẩn hóa (các giá trị literal được thay bằng `$1`, `$2`, …) |
+| **Calls**       | Tổng số lần truy vấn này được thực thi                                           |
+| **Total Time**  | Tổng thời gian thực thi tích lũy tính bằng millisecond                           |
+| **Mean Time**   | Thời gian thực thi trung bình mỗi lần gọi                                        |
+| **Rows**        | Tổng số hàng được trả về hoặc bị ảnh hưởng                                       |
+| **Delta Calls** | Số lần gọi mới kể từ Snapshot trước                                              |
+| **Delta Time**  | Tổng thời gian tăng thêm kể từ Snapshot trước                                    |
 
 ## Sắp xếp
 
