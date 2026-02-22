@@ -15,10 +15,10 @@ The backend runs a background metrics collector (worker goroutine) that polls co
 ```bash
 ┌─────────────────────────────────────────────────────────────┐
 │                    React SPA (Vite)                         │
-│  ┌────────────┬──────────────────┬─────────────────────┐    │
-│  │  Dashboard │  Connections     │  Query Analysis     │    │
-│  │  (Charts)  │  (Forms)         │  (Detail View)      │    │
-│  └────────────┴──────────────────┴─────────────────────┘    │
+│  ┌──────────┬─────────────┬──────────────┬──────────────┐   │
+│  │Dashboard │ Connections │Query/Explain │Index Analysis│   │
+│  │(Charts)  │ (Forms)     │(Tree/Tables) │(Recommend.)  │   │
+│  └──────────┴─────────────┴──────────────┴──────────────┘   │
 └────────────────────────┬────────────────────────────────────┘
                          │ HTTP/SSE
                          ▼
@@ -86,9 +86,12 @@ Domain types representing database entities:
 - `Connection`: Registered database connection (id, name, dbType, encryptedDSN, createdAt)
 - `SlowQuery`: Query from pg_stat_statements (query, calls, totalTime, meanTime, maxTime)
 - `ExplainPlan`: Query execution plan with cost estimation
-- `IndexStat`: Index usage statistics (indexName, tableSize, indexSize, idxScan)
-- `TableStat`: Table statistics (tableName, rowCount, size, lastVacuum)
+- `IndexStat`: Index usage statistics (indexName, tableSize, indexSize, idxScan, isUnused)
+- `TableStat`: Table statistics (tableName, nLiveTup, seqScans, schemaName)
 - `DatabaseStats`: Database-wide metrics (totalSize, connections, txnStats)
+- `DuplicateIndex`: Pair of duplicate indexes (tableName, index1, index2)
+- `Recommendation`: Actionable suggestion (type, severity, description, sql, tableName, indexName)
+- `IndexAnalysisResult`: Aggregated result (unusedIndexes, missingCandidates, duplicateIndexes, recommendations, capturedAt)
 
 #### Store Layer (`internal/store`)
 
@@ -96,6 +99,8 @@ Interface-driven data persistence:
 
 ```go
 type Store interface {
+    Ping(ctx context.Context) error
+
     // Connections
     CreateConnection(ctx context.Context, conn *Connection) error
     GetConnection(ctx context.Context, id string) (*Connection, error)
@@ -145,7 +150,9 @@ Chi router with endpoint handlers:
 
 - **Connection endpoints**: CRUD operations for database connections
 - **Query endpoints**: List slow queries, stream live metrics via SSE
-- **Query analysis endpoints**: EXPLAIN plans, historical analysis
+- **Explain endpoint**: Run EXPLAIN via adapter, return plan JSON (`internal/api/handlers/explain.go`)
+- **Index endpoints**: Index analysis with unused/duplicate/missing detection and SQL recommendations (`internal/api/handlers/indexes.go`)
+- **Health endpoint**: `/healthz` — calls `Store.Ping()`, returns 200/503
 - **Paste endpoint**: Parse and analyze MySQL slow log data
 
 Middleware stack:
@@ -247,17 +254,33 @@ Update charts and tables (React)
 ### Query Explain
 
 ```bash
-User clicks "Explain" on query
-    ↓ GET /api/connections/{id}/explain?query=...
-API Handler
+User enters SQL in explain-page.tsx (Direct or Paste JSON mode)
+    ↓ POST /api/connections/{id}/explain { query, analyze_mode }
+RunExplain handler
     ↓
-Decrypt DSN (Crypto module)
+Decrypt DSN → Connect adapter → GetExplainPlan (30s timeout)
     ↓
-Run EXPLAIN ANALYZE (Adapter)
+Return ExplainPlan JSON
     ↓
-Return plan (JSON)
+explain-json-tree.tsx renders collapsible tree
+(seq scan warnings, row mismatch detection, cost annotations)
+```
+
+### Index Analysis
+
+```bash
+User opens indexes-page.tsx
+    ↓ GET /api/connections/{id}/indexes
+GetIndexAnalysis handler
     ↓
-Display in modal (React)
+GetIndexStats (pg_stat_user_indexes) → detect unused (idx_scan=0)
+GetTableStats → detect high seq scan candidates
+GetDuplicateIndexes (pg adapter type assertion)
+computeRecommendations → generate DROP/CREATE INDEX SQL
+    ↓
+Return IndexAnalysisResult JSON
+    ↓
+indexes-page.tsx renders summary cards + recommendations-list.tsx
 ```
 
 ## Security Considerations
@@ -301,3 +324,19 @@ Schema migrations in `migrations/` directory use embedded SQL files:
 - `003_create_index_stats_snapshots.sql`
 
 Migrations run once on server startup, tracked via `schema_version` table.
+
+## Deployment
+
+### Docker (Phase 10)
+
+3-stage Dockerfile: Node (React build) → Go builder (stripped binary) → Alpine runtime (non-root user).
+
+`docker-compose.yml`: postgres with healthcheck → migrate service → app with `HEALTHCHECK curl /healthz`.
+
+Makefile targets: `build`, `docker-build`, `docker-up`, `docker-down`, `generate-key`, `test`.
+
+---
+
+**Document Version:** 1.1
+**Last Updated:** 2026-02-22
+**Scope:** Production ready (Phases 1–10)

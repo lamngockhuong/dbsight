@@ -12,9 +12,14 @@ COPY go.* ./
 RUN go mod download
 COPY . .
 COPY --from=web-builder /web/dist ./web/dist
-RUN go build -o dbsight .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o dbsight .
 
 FROM alpine:3.19
-COPY --from=go-builder /app/dbsight /usr/local/bin/
-ENTRYPOINT ["dbsight"]
+RUN apk add --no-cache ca-certificates tzdata && \
+    adduser -D -h /app appuser
+WORKDIR /app
+COPY --from=go-builder /app/dbsight .
+USER appuser
+EXPOSE 42198
+ENTRYPOINT ["./dbsight"]
 CMD ["serve"]

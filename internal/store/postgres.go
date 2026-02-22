@@ -29,6 +29,10 @@ func (s *PGStore) Close() {
 	s.pool.Close()
 }
 
+func (s *PGStore) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 // CreateConnection inserts a new connection and populates id, created_at, updated_at.
 func (s *PGStore) CreateConnection(ctx context.Context, c *models.Connection) error {
 	return s.pool.QueryRow(ctx, `

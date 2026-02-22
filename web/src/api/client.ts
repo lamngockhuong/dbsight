@@ -1,4 +1,12 @@
-import type { ApiError, Connection, QueryDelta, QuerySnapshot, SlowQuery } from '../types'
+import type {
+  ApiError,
+  Connection,
+  ExplainPlan,
+  IndexAnalysisResult,
+  QueryDelta,
+  QuerySnapshot,
+  SlowQuery,
+} from '../types'
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -29,6 +37,16 @@ export const api = {
     history: (connId: number, limit = 20) =>
       request<QuerySnapshot[]>(`/connections/${connId}/queries/history?limit=${limit}`),
     streamUrl: (connId: number) => `${BASE}/api/connections/${connId}/queries/stream`,
+  },
+  explain: {
+    run: (connId: number, query: string, analyzeMode = false) =>
+      request<ExplainPlan>(`/connections/${connId}/explain`, {
+        method: 'POST',
+        body: JSON.stringify({ query, analyze_mode: analyzeMode }),
+      }),
+  },
+  indexes: {
+    analyze: (connId: number) => request<IndexAnalysisResult>(`/connections/${connId}/indexes`),
   },
   paste: {
     parseQueries: (logText: string) =>

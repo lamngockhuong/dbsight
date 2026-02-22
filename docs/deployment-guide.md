@@ -90,12 +90,12 @@ docker run -d \
 
 ### Environment Variables
 
-| Variable               | Required | Default | Example                                                          |
-| ---------------------- | -------- | ------- | ---------------------------------------------------------------- |
+| Variable               | Required | Default | Example                                                       |
+| ---------------------- | -------- | ------- | ------------------------------------------------------------- |
 | `DATABASE_URL`         | Yes      | —       | `postgres://user:pass@localhost:5432/dbsight?sslmode=disable` |
-| `ENCRYPTION_KEY`       | Yes      | —       | `abc123...` (64 hex chars = 32 bytes)                            |
-| `PORT`                 | No       | `42198`  | `42198`                                                           |
-| `WORKER_INTERVAL_SECS` | No       | `30`    | `30`                                                             |
+| `ENCRYPTION_KEY`       | Yes      | —       | `abc123...` (64 hex chars = 32 bytes)                         |
+| `PORT`                 | No       | `42198` | `42198`                                                       |
+| `WORKER_INTERVAL_SECS` | No       | `30`    | `30`                                                          |
 
 Generate encryption key:
 
@@ -309,18 +309,25 @@ psql -U dbsight dbsight < /backups/dbsight-20260221.sql
 
 ### Health Check Endpoint
 
-Currently, DBSight does not expose a `/health` endpoint. For production, add readiness/liveness checks via dependency verification:
+DBSight exposes `/healthz` (Phase 10). It calls `Store.Ping()` and returns:
+
+- `200 {"status":"ok"}` — DB reachable
+- `503 {"status":"error","error":"..."}` — DB unreachable
 
 ```bash
-# Simple check: API responds
-curl -f http://localhost:42198/api/connections || exit 1
+curl -f http://localhost:42198/healthz
 ```
 
-Post-MVP will add dedicated `/health` endpoint with:
+Use in Docker `HEALTHCHECK` or Kubernetes liveness/readiness probes:
 
-- Database connectivity status
-- Worker heartbeat (last collection timestamp)
-- Migration status
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 42198
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
 
 ### Structured Logging
 
@@ -542,5 +549,5 @@ If `ENCRYPTION_KEY` is lost, stored encrypted DSNs cannot be decrypted. Mitigati
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2026-02-21
+**Document Version:** 1.1
+**Last Updated:** 2026-02-22

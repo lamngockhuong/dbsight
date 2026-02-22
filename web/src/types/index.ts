@@ -54,6 +54,40 @@ export interface DatabaseStats {
   cache_hit_ratio: number
 }
 
+export interface Recommendation {
+  type: string
+  schema_name: string
+  table_name: string
+  index_name?: string
+  description: string
+  sql?: string
+  severity: 'high' | 'medium' | 'low'
+}
+
+export interface DuplicateIndex {
+  table_name: string
+  index1: string
+  index2: string
+  index_def: string
+}
+
+export interface IndexAnalysisResult {
+  unused_indexes: IndexStat[]
+  missing_candidates: TableStat[]
+  duplicate_indexes: DuplicateIndex[]
+  recommendations: Recommendation[]
+  captured_at: string
+}
+
+export interface TableStat {
+  schema_name: string
+  table_name: string
+  seq_scans: number
+  seq_tup_read: number
+  n_live_tup: number
+  table_size_bytes: number
+}
+
 export interface ApiError {
   error: string
 }

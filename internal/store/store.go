@@ -7,6 +7,9 @@ import (
 )
 
 type Store interface {
+	// Health
+	Ping(ctx context.Context) error
+
 	// Connections
 	CreateConnection(ctx context.Context, c *models.Connection) error
 	GetConnection(ctx context.Context, id int64) (*models.Connection, error)

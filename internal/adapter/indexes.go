@@ -41,6 +41,38 @@ func (a *PostgresAdapter) GetIndexStats(ctx context.Context) ([]models.IndexStat
 	return result, rows.Err()
 }
 
+// GetDuplicateIndexes finds indexes with identical definitions on the same table.
+func (a *PostgresAdapter) GetDuplicateIndexes(ctx context.Context) ([]models.DuplicateIndex, error) {
+	rows, err := a.pool.Query(ctx, `
+		SELECT
+			a.tablename,
+			a.indexname AS index1,
+			b.indexname AS index2,
+			a.indexdef
+		FROM pg_indexes a
+		JOIN pg_indexes b
+			ON a.tablename = b.tablename
+			AND a.indexdef = b.indexdef
+			AND a.indexname < b.indexname
+		WHERE a.schemaname NOT IN ('pg_catalog', 'information_schema')
+		ORDER BY a.tablename, a.indexname
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("duplicate indexes: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.DuplicateIndex
+	for rows.Next() {
+		var d models.DuplicateIndex
+		if err := rows.Scan(&d.TableName, &d.Index1, &d.Index2, &d.IndexDef); err != nil {
+			return nil, fmt.Errorf("scan duplicate index: %w", err)
+		}
+		result = append(result, d)
+	}
+	return result, rows.Err()
+}
+
 // GetTableStats returns per-table usage stats from pg_stat_user_tables.
 func (a *PostgresAdapter) GetTableStats(ctx context.Context) ([]models.TableStat, error) {
 	rows, err := a.pool.Query(ctx, `
