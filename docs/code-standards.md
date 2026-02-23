@@ -46,8 +46,10 @@ DBSight maintains consistent coding standards across Go backend and TypeScript f
 - **Components**: PascalCase (e.g., `<QueryDetailDrawer />`)
 - **Hooks**: Prefix `use` (e.g., `useQueryHistory()`)
 - **Types**: PascalCase interfaces
-- **Styling**: Tailwind CSS + shadcn/ui components
-- **API**: Centralize calls in `src/services/api.ts`
+- **Styling**: Tailwind CSS v4 + shadcn/ui components; responsive first
+- **Theme**: Custom ThemeProvider with light/dark/system support (localStorage persisted)
+- **Notifications**: Use Sonner toast for CRUD feedback (success/error/loading states)
+- **API**: Centralize calls in `src/api/client.ts`
 - **State**: Use `useEffect` for data fetching; handle loading/error/cleanup
 - **Imports**: Use `@/` path aliases (configured in tsconfig)
 

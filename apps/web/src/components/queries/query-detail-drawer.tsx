@@ -15,7 +15,7 @@ export function QueryDetailDrawer({ query, connId, onClose, onExplain }: QueryDe
   if (!query) return null
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[480px] bg-background border-l shadow-lg z-50 overflow-y-auto">
+    <div className="fixed inset-y-0 right-0 w-full md:w-[480px] bg-background border-l shadow-lg z-50 overflow-y-auto">
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Query Detail</h3>

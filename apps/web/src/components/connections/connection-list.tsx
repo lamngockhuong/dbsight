@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -40,52 +41,65 @@ export function ConnectionList({ connections, onDelete, onTest }: ConnectionList
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Type</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {connections.map((conn) => (
-          <TableRow key={conn.id}>
-            <TableCell className="font-medium">{conn.name}</TableCell>
-            <TableCell>
-              <Badge variant="secondary">{conn.db_type}</Badge>
-            </TableCell>
-            <TableCell>
-              {testResults[conn.id] && (
-                <span className="text-sm">
-                  {testResults[conn.id].includes('ms') ? (
-                    <Badge variant="default">{testResults[conn.id]}</Badge>
-                  ) : (
-                    <Badge variant="destructive">{testResults[conn.id]}</Badge>
-                  )}
-                </span>
-              )}
-            </TableCell>
-            <TableCell className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => navigate(`/queries/${conn.id}`)}>
-                Queries
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleTest(conn.id)}
-                disabled={testing[conn.id]}
-              >
-                {testing[conn.id] ? 'Testing...' : 'Test'}
-              </Button>
-              <Button size="sm" variant="destructive" onClick={() => onDelete(conn.id)}>
-                Delete
-              </Button>
-            </TableCell>
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Actions</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {connections.map((conn) => (
+            <TableRow key={conn.id}>
+              <TableCell className="font-medium">{conn.name}</TableCell>
+              <TableCell>
+                <Badge variant="secondary">{conn.db_type}</Badge>
+              </TableCell>
+              <TableCell>
+                {testResults[conn.id] && (
+                  <span className="text-sm">
+                    {testResults[conn.id].includes('ms') ? (
+                      <Badge variant="default">{testResults[conn.id]}</Badge>
+                    ) : (
+                      <Badge variant="destructive">{testResults[conn.id]}</Badge>
+                    )}
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => navigate(`/queries/${conn.id}`)}>
+                  Queries
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleTest(conn.id)}
+                  disabled={testing[conn.id]}
+                >
+                  {testing[conn.id] ? 'Testing...' : 'Test'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={async () => {
+                    try {
+                      await onDelete(conn.id)
+                      toast.success('Connection deleted')
+                    } catch {
+                      toast.error('Failed to delete connection')
+                    }
+                  }}
+                >
+                  Delete
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   )
 }

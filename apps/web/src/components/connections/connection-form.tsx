@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -48,6 +49,7 @@ export function ConnectionForm({ onSubmit }: ConnectionFormProps) {
     try {
       const finalDsn = inputMode === 'form' ? buildDsn(dbType, fields) : dsn
       await onSubmit({ name, db_type: dbType, dsn: finalDsn })
+      toast.success('Connection created')
       setName('')
       setDsn('')
       setFields({ host: 'localhost', port: '', username: '', password: '', database: '' })

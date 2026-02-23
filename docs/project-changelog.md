@@ -6,6 +6,21 @@ All notable changes to DBSight are documented here.
 
 ## [Unreleased]
 
+### Added — UI Enhancements (Responsive, Theme, Notifications)
+
+- **Responsive mobile layout**: Sheet-based drawer sidebar for mobile devices
+- **Dark/Light/System theme support**: Custom ThemeProvider with localStorage persistence (replaces next-themes)
+- **Theme toggle**: DropdownMenu component to switch between Light, Dark, and System themes
+- **Toast notifications**: Sonner integration for CRUD feedback (success, error, loading states)
+- **Breadcrumb navigation**: Breadcrumbs component for page hierarchy visualization
+- **Sidebar enhancements**:
+  - New `sidebar-nav.tsx` for reusable navigation links
+  - New `sidebar-footer.tsx` with author info, GitHub link, docs link, and app version
+  - New `mobile-sidebar.tsx` for responsive drawer implementation
+- **New UI components**: Sheet, DropdownMenu, Breadcrumb (via shadcn/ui)
+- **Lucide icons**: Added for theme toggle and UI enhancements
+- **Removed dependency**: next-themes (replaced with custom solution)
+
 ---
 
 ## [1.1.0] — 2026-02-22

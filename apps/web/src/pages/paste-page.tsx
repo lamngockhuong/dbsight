@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,6 +26,7 @@ export function PastePage() {
     try {
       const result = await api.paste.parseQueries(logText)
       setQueries(result)
+      toast.success(`Parsed ${result.length} queries`)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -62,7 +64,7 @@ export function PastePage() {
           <CardHeader>
             <CardTitle>Results ({queries.length} queries)</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

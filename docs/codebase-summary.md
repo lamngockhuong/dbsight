@@ -226,9 +226,15 @@ dbsight/
 
 #### Components
 
-- **apps/web/src/components/ui/\***: shadcn/ui base components (Button, Card, Input, Table, Badge, Tabs, Textarea).
+- **apps/web/src/components/ui/\***: shadcn/ui base components (Button, Card, Input, Table, Badge, Tabs, Textarea, Sheet, DropdownMenu, Breadcrumb).
 - **apps/web/src/components/layout/layout.tsx**: Main shell with sidebar + content area.
-- **apps/web/src/components/layout/sidebar.tsx**: Navigation links to pages.
+- **apps/web/src/components/layout/sidebar.tsx**: Navigation links to pages (desktop layout).
+- **apps/web/src/components/layout/sidebar-nav.tsx**: Reusable sidebar navigation links component.
+- **apps/web/src/components/layout/sidebar-footer.tsx**: Sidebar footer with author info, GitHub link, docs link, and app version.
+- **apps/web/src/components/layout/mobile-sidebar.tsx**: Responsive mobile sidebar using Sheet component for drawer overlay.
+- **apps/web/src/components/layout/breadcrumbs.tsx**: Breadcrumb navigation component for page hierarchy.
+- **apps/web/src/components/theme/theme-context.tsx**: Custom ThemeProvider context (light/dark/system). Manages localStorage persistence for theme preference. Replaces next-themes dependency.
+- **apps/web/src/components/theme/theme-toggle.tsx**: Theme switcher dropdown menu (Light, Dark, System) with Lucide icons.
 - **apps/web/src/components/connections/connection-list.tsx**: Table of registered connections with test/edit/delete buttons.
 - **apps/web/src/components/connections/connection-form.tsx**: Form to create/edit connection. Database type selector (PostgreSQL, MySQL, MariaDB), toggle between DSN and form field modes, uses dsn-builder.ts.
 - **apps/web/src/components/queries/slow-query-table.tsx**: TanStack Table v8 with sortable/filterable columns. Displays query text, calls, total time, delta.
@@ -238,6 +244,10 @@ dbsight/
 - **apps/web/src/utils/mysql-explain-parser.ts**: Parses MySQL `EXPLAIN FORMAT=JSON` and `EXPLAIN ANALYZE TREE FORMAT=JSON` output.
 - **apps/web/src/utils/mariadb-explain-parser.ts**: Parses MariaDB `EXPLAIN FORMAT=JSON` and `ANALYZE FORMAT=JSON` output.
 - **apps/web/src/components/indexes/recommendations-list.tsx**: Renders Recommendation list with severity badges and copyable SQL. (Phase 09)
+
+#### Notifications
+
+- **Sonner toast library**: Integration for CRUD feedback notifications (success, error, loading states on connection create/update/delete and query operations).
 
 #### Pages
 
@@ -276,12 +286,15 @@ dbsight/
 
 - **react@19** — UI library
 - **react-dom@19** — DOM rendering
+- **react-router-dom** — Client-side routing
 - **typescript** — Type safety
 - **vite** — Build tool, dev server
 - **shadcn/ui** — Headless component library
 - **tailwindcss@4** — Utility CSS
 - **@tanstack/react-table@8** — Headless table library
 - **recharts** — Chart library (React)
+- **sonner** — Toast notification system (success, error, loading feedback)
+- **lucide-react** — Icon library
 - **@radix-ui/\*** — Accessible component primitives (shadcn/ui deps)
 - **@biomejs/biome** — Linting + formatting
 

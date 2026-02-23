@@ -98,7 +98,7 @@ export function IndexesPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <SummaryCard
           title="Unused Indexes"
           count={result.unused_indexes.length}
@@ -139,7 +139,7 @@ export function IndexesPage() {
               <Badge variant="secondary">{result.unused_indexes.length}</Badge>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -176,7 +176,7 @@ export function IndexesPage() {
               <Badge variant="secondary">{result.missing_candidates.length}</Badge>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

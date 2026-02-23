@@ -229,7 +229,12 @@ Built with Vite, TypeScript, shadcn/ui components. Located in `apps/web/` (pnpm 
 - Server-Sent Events (SSE) consumer for real-time metric streaming
 - TanStack Table v8 for sortable/filterable query tables
 - Recharts for real-time performance graphs
-- Tailwind CSS for styling
+- Tailwind CSS v4 for styling
+- Dark/Light/System theme support with localStorage persistence (custom ThemeProvider)
+- Responsive mobile layout with Sheet-based drawer sidebar
+- Breadcrumb navigation for page hierarchy
+- Toast notifications (Sonner) for CRUD feedback
+- Sidebar footer with links to GitHub, docs, and app version
 
 ### 3. Database (PostgreSQL)
 

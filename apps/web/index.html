@@ -7,6 +7,17 @@
     <title>web</title>
   </head>
   <body>
+    <script>
+      (function() {
+        var t = localStorage.getItem('dbsight-theme');
+        var d = document.documentElement;
+        if (t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          d.classList.add('dark');
+        } else {
+          d.classList.remove('dark');
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
