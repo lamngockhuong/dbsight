@@ -21,7 +21,7 @@ COPY . .
 COPY --from=web-builder /build/apps/web/dist ./apps/web/dist
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o dbsight .
 
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates tzdata && \
     adduser -D -h /app appuser
 WORKDIR /app
