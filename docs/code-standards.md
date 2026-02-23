@@ -99,6 +99,25 @@ All endpoints accept JSON; use `?` query params for filtering.
 - TypeScript: React Testing Library; focus on user interactions, not implementation
 - Mock APIs via MSW (Mock Service Worker)
 
+### Integration Testing with Docker
+
+Five containerized databases are provided in `test/` for adapter integration tests:
+
+```bash
+docker compose -f test/docker-compose.yml up -d    # Start all test DBs
+docker compose -f test/docker-compose.yml down -v  # Teardown + remove volumes
+```
+
+| DB           | Port | Credentials              |
+| ------------ | ---- | ------------------------ |
+| PostgreSQL 17 | 5498 | dbsight/secret/ecommerce |
+| MySQL 5.7    | 3357 | dbsight/secret/ecommerce |
+| MySQL 8.0    | 3380 | dbsight/secret/ecommerce |
+| MariaDB 10.11 | 3311 | dbsight/secret/ecommerce |
+| MariaDB 11.4 | 3312 | dbsight/secret/ecommerce |
+
+Use `./test/scripts/generate-data.sh medium all` to populate realistic datasets before running adapter tests.
+
 ## Further Reading
 
 - [System Architecture](./system-architecture.md) — Component interactions, data flow

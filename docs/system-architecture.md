@@ -341,6 +341,38 @@ indexes-page.tsx renders summary cards + recommendations-list.tsx
 3. Update worker to collect new metric
 4. Add API endpoint and React component
 
+## Test Infrastructure
+
+### Docker-Based Test Databases (`test/`)
+
+Five containerized databases for integration and adapter testing, defined in `test/docker-compose.yml`:
+
+| Container    | Image          | Port | Feature                        |
+| ------------ | -------------- | ---- | ------------------------------ |
+| postgres     | postgres:17    | 5498 | pg_stat_statements enabled     |
+| mysql57      | mysql:5.7      | 3357 | performance_schema enabled     |
+| mysql80      | mysql:8.0      | 3380 | performance_schema enabled     |
+| mariadb1011  | mariadb:10.11  | 3311 | performance_schema enabled     |
+| mariadb11    | mariadb:11.4   | 3312 | performance_schema enabled     |
+
+Credentials: `user=dbsight`, `password=secret`, `database=ecommerce`.
+
+All containers share an e-commerce sample schema (6 tables, ~1.3K rows light seed) with intentional performance anti-patterns: redundant indexes, missing indexes, and slow query patterns — designed to exercise adapter detection logic.
+
+### Commands
+
+```bash
+docker compose -f test/docker-compose.yml up -d    # Start all 5 test DBs
+docker compose -f test/docker-compose.yml stop      # Stop without data loss
+docker compose -f test/docker-compose.yml down -v   # Remove containers + volumes
+./test/scripts/generate-data.sh medium all          # Scale to ~50K rows
+./test/scripts/generate-data.sh heavy all           # Scale to ~100K+ rows
+```
+
+### Data Scaling
+
+`test/scripts/generate-data.sh` accepts two arguments: `light | medium | heavy` and `all | postgres | mysql57 | mysql80 | mariadb1011 | mariadb11`. Use `medium` for realistic adapter performance testing and `heavy` for stress testing index analysis.
+
 ## Migration Strategy
 
 Schema migrations in `migrations/` directory use embedded SQL files:
@@ -367,6 +399,6 @@ Makefile targets: `build`, `build-docs`, `dev-docs`, `docker-build`, `docker-up`
 
 ---
 
-**Document Version:** 1.2
-**Last Updated:** 2026-02-22
-**Scope:** Production ready (Phases 1–10) + monorepo restructure
+**Document Version:** 1.3
+**Last Updated:** 2026-02-23
+**Scope:** Production ready (Phases 1–10) + monorepo restructure + test infrastructure

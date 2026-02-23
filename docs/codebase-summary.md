@@ -115,6 +115,18 @@ dbsight/
 │   ├── project-roadmap.md           # [NEW] MVP → post-MVP phases
 │   └── deployment-guide.md          # [NEW] Docker + production setup
 │
+├── test/                            # Integration test infrastructure
+│   ├── docker-compose.yml           # 5 DB containers (postgres, mysql57, mysql80, mariadb1011, mariadb11)
+│   ├── generate-data.sh             # Data scaling script (light/medium/heavy)
+│   ├── scripts/                     # Per-DB init SQL and config files
+│   │   ├── common/                  # Shared schema + seed SQL (MySQL/MariaDB)
+│   │   ├── postgres/                # PostgreSQL-specific init + extensions
+│   │   ├── mysql57/                 # MySQL 5.7 my.cnf
+│   │   ├── mysql80/                 # MySQL 8.0 my.cnf
+│   │   ├── mariadb1011/             # MariaDB 10.11 my.cnf
+│   │   └── mariadb11/              # MariaDB 11.4 my.cnf
+│   └── (per-engine dirs mirror scripts/ naming)
+│
 └── plans/                           # Project planning docs (separate from docs/)
     ├── 260221-1933-database-analyzer-webapp/
     │   ├── plan.md
@@ -235,6 +247,14 @@ dbsight/
 - **apps/web/src/pages/explain-page.tsx**: Direct mode (run EXPLAIN via API) + Paste JSON mode; ANALYZE warning banner; renders explain-json-tree. (Phase 08)
 - **apps/web/src/pages/indexes-page.tsx**: Summary cards (unused count, duplicate count, recommendation count), recommendations list, detail tables. (Phase 09)
 - **apps/web/src/pages/paste-page.tsx**: Paste MySQL slow log, analyze offline.
+
+### Test Infrastructure
+
+- **test/docker-compose.yml**: Defines 5 database containers for adapter integration testing. Ports: PostgreSQL 17 (5498), MySQL 5.7 (3357), MySQL 8.0 (3380), MariaDB 10.11 (3311), MariaDB 11.4 (3312). All use credentials `dbsight/secret`, database `ecommerce`.
+- **test/generate-data.sh**: Scales the e-commerce dataset to `light` (~1.3K rows), `medium` (~50K rows), or `heavy` (~100K+ rows). Accepts target engine as second arg (`all`, `postgres`, `mysql57`, etc.).
+- **test/scripts/common/**: Shared SQL files for MySQL/MariaDB containers — schema (6 tables: users, products, orders, order_items, reviews, categories), seed data, and performance anti-patterns.
+- **test/scripts/postgres/**: PostgreSQL-specific init: extension setup (`pg_stat_statements`), schema, seed, and anti-pattern SQL.
+- **test/scripts/{engine}/my.cnf** or **custom.cnf**: Engine-specific configuration enabling `performance_schema`, slow query log, and relevant variables.
 
 ### Migrations
 
@@ -418,6 +438,6 @@ Migrations tracked in `schema_version` table. Safe to re-run on upgrade.
 
 ---
 
-**Document Version:** 1.2
-**Last Updated:** 2026-02-22
-**Scope:** Production ready (Phases 1–10) + monorepo restructure
+**Document Version:** 1.3
+**Last Updated:** 2026-02-23
+**Scope:** Production ready (Phases 1–10) + monorepo restructure + test infrastructure
