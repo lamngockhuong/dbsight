@@ -1,0 +1,118 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    command: postgres -c shared_preload_libraries=pg_stat_statements
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ecommerce
+      POSTGRES_USER: dbsight
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5498:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/postgres/01-init-extensions.sql:/docker-entrypoint-initdb.d/01-init-extensions.sql:ro
+      - ./scripts/postgres/02-schema.sql:/docker-entrypoint-initdb.d/02-schema.sql:ro
+      - ./scripts/postgres/03-seed-light.sql:/docker-entrypoint-initdb.d/03-seed-light.sql:ro
+      - ./scripts/postgres/04-performance-anti-patterns.sql:/docker-entrypoint-initdb.d/04-performance-anti-patterns.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbsight -d ecommerce"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mysql57:
+    image: mysql:5.7
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ecommerce
+      MYSQL_USER: dbsight
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: rootsecret
+    ports:
+      - "3357:3306"
+    volumes:
+      - mysql57-data:/var/lib/mysql
+      - ./scripts/mysql57/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - ./scripts/common/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./scripts/common/02-seed-light.sql:/docker-entrypoint-initdb.d/02-seed-light.sql:ro
+      - ./scripts/common/03-performance-anti-patterns.sql:/docker-entrypoint-initdb.d/03-performance-anti-patterns.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "dbsight", "-psecret"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mysql80:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ecommerce
+      MYSQL_USER: dbsight
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: rootsecret
+    ports:
+      - "3380:3306"
+    volumes:
+      - mysql80-data:/var/lib/mysql
+      - ./scripts/mysql80/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - ./scripts/common/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./scripts/common/02-seed-light.sql:/docker-entrypoint-initdb.d/02-seed-light.sql:ro
+      - ./scripts/common/03-performance-anti-patterns.sql:/docker-entrypoint-initdb.d/03-performance-anti-patterns.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "dbsight", "-psecret"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mariadb1011:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ecommerce
+      MYSQL_USER: dbsight
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: rootsecret
+    ports:
+      - "3311:3306"
+    volumes:
+      - mariadb1011-data:/var/lib/mysql
+      - ./scripts/mariadb1011/my.cnf:/etc/mysql/mariadb.conf.d/custom.cnf:ro
+      - ./scripts/common/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./scripts/common/02-seed-light.sql:/docker-entrypoint-initdb.d/02-seed-light.sql:ro
+      - ./scripts/common/03-performance-anti-patterns.sql:/docker-entrypoint-initdb.d/03-performance-anti-patterns.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mariadb11:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ecommerce
+      MYSQL_USER: dbsight
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: rootsecret
+    ports:
+      - "3312:3306"
+    volumes:
+      - mariadb11-data:/var/lib/mysql
+      - ./scripts/mariadb11/my.cnf:/etc/mysql/mariadb.conf.d/custom.cnf:ro
+      - ./scripts/common/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./scripts/common/02-seed-light.sql:/docker-entrypoint-initdb.d/02-seed-light.sql:ro
+      - ./scripts/common/03-performance-anti-patterns.sql:/docker-entrypoint-initdb.d/03-performance-anti-patterns.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  mysql57-data:
+  mysql80-data:
+  mariadb1011-data:
+  mariadb11-data:
