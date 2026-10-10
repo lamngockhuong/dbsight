@@ -1,4 +1,4 @@
-FROM node:20-alpine AS web-builder
+FROM node:24-alpine AS web-builder
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /build
 
